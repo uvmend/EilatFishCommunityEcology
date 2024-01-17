@@ -1,12 +1,3 @@
-
-#df = read.csv("./Data/EilatFishSurveysFullData.csv")
-#transects_df = subset(df, df$survey_method == "Transects")
-#no_juv_trans_df = subset(transects_df, transects_df$Trans_type != "J")
-#write.csv(no_juv_trans_df, "./Data/EilatFishSurveysOnlyTransNoJuv.csv")
-
-#colnames(df)
-#unique(no_juv_trans_df$Habitat)
-#head(no_juv_trans_df)
 pacman::p_load(tidyverse)
 pacman::p_load(patchwork)
 source('./RCode/PlottingFunctions/SpatialPlottingFunctions.R')
@@ -17,6 +8,18 @@ df$Date <- as.Date(df$Date, "%Y-%m-%d")
 
 colnames(df)
 
+# df %>% 
+#   drop_na('lon') %>% 
+#   ggplot(aes(x = Depth, fill = Country)) +
+#   geom_histogram() +
+#   ggtitle("Depth of Transect")
+# 
+# df %>% 
+#   ggplot(aes(x = Date)) +
+#   geom_histogram() +
+#   ggtitle("Days of survey") +
+#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
 loc_df <- df %>% drop_na('lon')
 
 # locations:
@@ -24,7 +27,8 @@ m <- createSimplePointsOnMap(loc_df, lng_label = 'lon', lat_label = 'lat', radiu
 m
 
 # depths:
-ggplot(data = loc_df, mapping = aes(x = Depth, fill = Country)) + 
+loc_df %>% 
+  ggplot(mapping = aes(x = Depth, fill = Country)) + 
   geom_histogram() +
   ggtitle("Depth Of Transect", )
 

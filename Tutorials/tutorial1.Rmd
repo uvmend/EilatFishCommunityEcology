@@ -1,0 +1,352 @@
+---
+title: "Introduction to R"
+author: "Hezi Buba"
+date: "3 11 2019"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# First and Foremost!
+
+This exercise is designed to teach you Community Ecology tools - not to make you a good programmer.
+The "R 101" part of this course will focus on teaching you tools that will come in handy in later parts of this course:
+
+1. Installing and updating R and RStudio.
+2. Navigating RStudio.
+3. (Extremely) Basic R.
+4. Packages.
+5. Data importing.
+6. Data exploration.
+7. Introduction to data wrangling.
+
+For those interested in additional R practice, consider [R for Data Sciences](https://r4ds.had.co.nz/index.html) or the departmental R course. 
+
+# 1 Installing and updating R and RStudio.
+
+### 1.1 R
+
+[R is a language and environment for statistical computing and graphics.](https://www.r-project.org/about.html).
+
+We will use R for all of our analyses and plot generating. It keeps developing all the time through users that add new functions. Before we continue, we should all take a few minutes to download the latest version of R. You can download it here: https://cloud.r-project.org/
+
+### 1.2 RStudio
+
+RStudio is an integrated development environment, or IDE, for R programming. In simple terms, it is a tool designed to make it easier to work with R. You can download it here: http://www.rstudio.com/download
+
+Make sure to update RStudio to make use of all its latest features.
+
+# 2 Navigating RStudio
+
+### Initial Startup
+
+When you start RStudio, you’ll see two key regions in the interface:
+
+![](images/rstudio-console.png)
+
+The Console pane is where you type in your code and press Enter to run it. Text output will display in the Console pane, graphical output (mainly plots) will be displayed in the Plots pane. Other important panes are the Files and Environment, but the most important one is the Source pane. We will get to it in a few minutes.
+
+## Running an R Code
+
+All programming languages are, at their very core, fancy calculators. Let's have a look.
+
+Type `1 + 1` in the console.
+
+```{r}
+1 + 1
+```
+
+### Opening an R Script
+
+We will rarely use the Console pane. To get the most out of R, we will need to write scripts. Scripts are a series of functions written in a sequential order *in hope* to produce meaningful output. 
+
+To open a new script, do the following:
+
+![](images/rscript.png)
+
+This will open a new pane - the Source pane. This is where we will spend the majority of our time. The main benefit of a script is that it allows you to save it for future use and editing.
+
+# Side Note - R Markdown files
+
+The course material is available in `.Rmd` files. This is code integreted with text in a way that makes publishing straightforward. The html page you are viewing right now is an R markdown. You can download this file and use it on your computers. I personally think that if you are completely new to R, you should start by first opening a regular script and practice on that. 
+You can add comments to scripts by using the # button at the start of the line. This way R will ignore these lines.
+
+# 3 Basic R
+
+### Assignments
+The most basic feature in R is the assignemnt of `value` to `variables`. First, we will assign the value `1` to a variable `a`. This can be done by either the `=` operator or by `<-` (useful shortcut: `Alt+-`). Both work, but adopting the latter is highly recommended.
+
+Type this in the Source pane, and press Enter.
+
+```{r}
+a <- 1
+```
+
+Nothing happened. This is because in scripts, pressing Enter only takes you to the next line. To run a chunk of code, highlight it and press `Run`:
+
+![](images/run.JPG)
+
+(Protip: if you're only running one line of code, you don't need to highlight it.).
+
+Once you do it, your Environment pane will show this:
+
+![](images/env.PNG)
+
+This means that the variable `a` now has value of 1. 
+
+### IMPORTANT NOTE TO ALWAYS KEEP IN MIND WHEN WORKING IN R!
+
+R is case sensitive. This applies to anything you do in R. To demonstrate this, we will use the `==` operator. This tests for equality of two objects:
+
+```{r}
+1 == 1
+1 == 4
+```
+
+Now, let's compare "Lion" to "lion":
+
+```{r}
+"Lion" == "lion"
+```
+
+This also applies to variable names (VERY IMPORTANT):
+
+```{r}
+variable <- "a"
+```
+
+Let's repeat our test:
+
+```{r error = T}
+Variable == "a"
+variable == "a"
+```
+
+
+### Assignments and Functions
+
+As you can see, you can assign several classes of values to a variable. The most basic are:
+
+1. "numeric" - Any number.
+2. "integer" - Round numbers. 
+3. "character" - Words (strings is the acceptable terms). denoted by quotes (either `"` or `'`)
+4. "logical" - either TRUE or FALSE (in all caps without quotes, very important!)
+
+```{r}
+a <- 1
+class(x = a)
+b <- 1L # use capital L to create an interger.
+class(b)
+c <- "Hello world"
+class(c)
+d <- TRUE
+class(d)
+```
+
+To get the class of a variable, we used the `class()` function. We will use a lot of functions from now on, so it's important to understand how to use them. Every function has a name (for example), followed by parantheses. Within the parantheses, there are `arguments` - what the function needs in order to work. In `class()`, the only argument is `x` - what variable to perform the function on. You can and should read function documentation by running `?functionname` (no parantheses).
+
+Let's read about the `mean()` function.
+
+### Re-assigning variables
+
+You can update a variable by assigning it to itself after a modification, like so:
+
+```{r}
+a <- a + 1
+a
+```
+
+Notice that doing so only affects the variables which were reassigned:
+
+```{r}
+a <- a + b
+a
+b
+```
+
+b is still the same value is was originally assigned.
+
+### Data structures
+
+A single variable can take multiple values if structured according to R built-in structures. The simplest structure is called a vector - several values of the same class. Denoted by the `c()` function.
+
+```{r}
+numeric_vector <- c(1,4,3,5,6)
+character_vector <- c("Daft Punk","Tinariwen","Boops boops","Daft Punk")
+```
+
+Vectors have a sequential structure, which means every element in a vector can be referred to and even assigned according to its index:
+
+```{r}
+second_element <- numeric_vector[2]
+second_element
+numeric_vector[2] <- 9999
+numeric_vector[2]
+second_element == numeric_vector[2]
+```
+
+
+There is also a multidimensional structure called a matrix:
+
+```{r}
+numeric_matrix <- matrix(data = 1:4,nrow = 2,ncol = 2)
+numeric_matrix
+```
+
+The matrix assignment can be done by the `matrix` function. This function has several `arguments`:
+
+1. data = the values which will be assigned. Here we use the colon to describe a vector of the integers 1 through 4 (`1:4 == c(1L,2L,3L,4L)`)
+2. nrow = the number of rows in the matrix.
+3. ncol = the number of columns in the matrix.
+
+We can refer to any element in the matrix by using its bi-dimensional index:
+
+```{r}
+first_row_second_column <- numeric_matrix[1,2]
+first_row_second_column
+numeric_matrix[1,2] <- 0
+numeric_matrix[1,2]
+```
+
+We can refer to entire column or row like so:
+
+```{r}
+numeric_matrix[,2]
+numeric_matrix[2,]
+
+```
+
+Please note that the output is no longer a matrix, but a vector. (hint: try `class(numeric_matrix[,2])`)
+
+You can create a matrix by binding several columns or rows:
+
+```{r}
+column_a <-  c(1:4)
+column_b <-  c(6:9)
+bound_matrix <- cbind(column_a,column_b)
+bound_matrix
+```
+
+As you can see, a new matrix was created which has column names. We can get the column names by using the `colnames` function:
+
+```{r}
+colnames(bound_matrix)
+```
+
+If the elements have different classes, vectors and matrices are not suitable and we need to use a `list`:
+
+```{r}
+list_of_elements <- list(1,"Chromis chromis",3,"Coris julis")
+```
+
+When referring elements in a list, there is a big difference between using `[]` and `[[]]`. Can anyone tell the difference? (hint: use the `class` function)
+
+```{r}
+list_of_elements[2]
+list_of_elements[[2]]
+```
+
+
+A matrix is not suitable anymore when data is of multiple classes. For example, let's say one of its column is a vector of characters, while the other is a vector of numbers, like so:
+
+```{r}
+names <- c("Mai","Dvora")
+numbers <- c(16,32)
+bound_mixed <- cbind(names,numbers)
+bound_mixed
+```
+
+As you can see, the numbers column values now have quotes in them, denoting that they are character values. We can test that by using `class(bound_mixed[,2])`. 
+
+In order to work with mixed classes, we need a `data.frame` class. In this course we will work mainly on `data.frame` (and `tibble`, but more on that later...)
+
+```{r}
+names <- c("Mai","Dvora")
+numbers <- c(16,32)
+bound_mixed <- cbind.data.frame(names,numbers)
+bound_mixed
+```
+
+We have successfully created a data frame!
+
+Later, we will learn how to import data into R so we could learn more advanced R dataframe functions.
+
+# 4 Packages
+R's strength is its massive user base, who regularly adds to its functionality by creating libraries/packages. A package is a bunch of user defined functioned which aim to make work with R *MUCH* easier. During this course, we will do virtually all of our work in R by incorporating packages. 
+
+We will start by installing a bundle of really useful packages called `tidyverse`. The packages in the tidyverse share a common philosophy of data and R programming, and are designed to work together naturally.
+
+You can install the complete tidyverse with a single line of code:
+
+```{r eval=FALSE, include=TRUE}
+install.packages("tidyverse")
+```
+
+On your own computer, type that line of code in the console, and then press enter to run it. R will download the packages from CRAN and install them on to your computer. 
+
+You will not be able to use the functions, objects, and help files in a package until you load it with library(). Once you have installed a package, you can load it with the `library()` function:
+
+```{r}
+library(tidyverse)
+```
+
+To sum up, using libraries is a two step process - `install.packages()` and `library()`. Refrain from writing `install.packages()` in your script to avoid re-downloading a package repeatedly. Either write that line in the console, or make sure to turn it into a comment in the script by using the # sign:
+
+```{r}
+#install.packages("tidyverse")
+```
+
+# 5 Data importing
+
+Like mentioned in the beginning, this course is not designed to make you a programmer. However, we will cover a few accepted good practices to make your R journey less stressful.
+
+### Working with Projects
+
+Projects are an RStudio feature that allows you to manage different working environments. This way, finding your data, code, plots, etc. is so much more comfortable.
+
+To create a new project:
+
+![](images/project.PNG)
+
+Then click "New Project" to go into this screen, where you can name your new project and click "Create Project":
+
+![](images/projectname.PNG)
+
+This will create a new directory on your computer which will serve as your default working directory when working on the current project. RStudio will let you know what project you are on by its name in the top right.
+
+
+### Creating .csv files
+
+R works best with `.csv` files. However, most of us use Excel and its likes for data inputs, which often saves data as `.xslx` files. We will now learn how to go from `.xslx` to `.csv`. Download the `Lions.xslx` file from the course directory.
+
+This file has three sheets. Start by navigating to the `Student_info` sheet, go to Save As, and select "CSV (Comma delimited) (*.csv)". Press OK for all warnings. This will save this particular sheet as a `.csv` file. 
+
+Repeat for all three sheets in the file. To be able to follow the next part more easily, save them as `student_info.csv`, `student_grade.csv`, and `animals.csv` in your project directory. 
+
+### Importing data
+
+Importing the data is super easy, barely an inconvenience. All it takes is one line of code. Note: we will be using `tidyverse` version of data import, as it creates a better class of data.frame which is called `tibble`. [tibbles are data.frames that are lazy and surly: they do less (i.e. they don’t change variable names or types, and don’t do partial matching) and complain more (e.g. when a variable does not exist). This forces you to confront problems earlier, typically leading to cleaner, more expressive code.](https://www.quora.com/Whats-the-difference-between-tibble-and-dataframe-in-R)
+
+To load your dataset into R, you assign it into a variable using the `read_csv()` function from the `tidyverse` package. Since we are using a project, we can refer to it easily using the `here()` function:
+
+```{r}
+student_info <- read_csv("student_info.csv")
+student_grade <- read_csv("student_grade.csv")
+animals <- read_csv("animals.csv")
+```
+
+Your Environment pane will now show this:
+
+![](images/envdataframe.PNG)
+
+For every dataset, RStudio will show you the number of rows (Obs.) and columns (variables).
+
+
+This is it for now.

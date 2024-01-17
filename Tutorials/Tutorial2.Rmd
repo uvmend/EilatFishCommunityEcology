@@ -1,0 +1,421 @@
+---
+title: "R intro part 2"
+author: "TG"
+date: "2024-01-08"
+output: 
+  html_document: 
+    toc: yes
+    toc_float:
+      collapsed: no
+    theme: cerulean
+---
+
+# Data wrangling
+
+We will start by loading our package - this is very important! make a habbit of writing it down at the start of each script!
+
+```{r}
+library(tidyverse)
+```
+
+We will now import the data were going to use today:
+
+```{r}
+
+fish <- read_csv("fish_example.csv")
+site_location <- read_csv("site_location.csv")
+
+```
+
+### Subsetting data
+
+Subsetting data is the process of taking a dataset and deliberately referring to a portion of it. There are multiple ways to do it in R, and I will cover a few which will be repeated throughout the course.
+
+You already know the first form of subsetting - we did it for matrices earlier. What does this line of code do?
+
+```{r}
+fish[1,2]
+```
+
+Like in a matrix, it returns the element in the first row and the second column.
+
+Usually, you wish to subset more than one element. Let's say you want the first and third elements in the first column. You would do that by passing two numbers for the row indexing - 1 and 3, and one number in the column indexing - 1. How do we combine two numbers together? with a vector! `c(1,3)`. Like so:
+
+```{r}
+fish[c(1,3),2]
+```
+
+As you can see - 1 and 3 are both in the row part of the index.
+
+Let's say you want an entire column. For example, we want the entire `Site` column. We can do this in several ways. First, we can use our brackets indexing like so:
+
+```{r}
+fish[,1]
+```
+
+If we leave the row indexing blank, R automatically chooses all rows.
+
+A simpler way to get a column from a dataset is by using the \$ sign. Let's create a new variable containing the fish abundances
+
+```{r}
+fish_abundance <- fish$abundance
+```
+
+The \$ is an easy way to refer to a column using its name. It creates a vector. Let's explore the student grades by finding their `mean()`,standard deviation (`sd()`), `max()`, and `min()`.
+
+```{r}
+mean(fish_abundance)
+sd(fish_abundance)
+max(fish_abundance)
+min(fish_abundance)
+
+mean(fish$abundance)
+```
+
+### Adding New Columns
+
+Lastly, you can add a column to a dataset. We will do so by using the `mutate` function found in one of the `tidyverse` packages. We will use two arguments: `.data` to refer to the data we wish to subset, and then we will define the new column name and its value, like so:
+
+```{r}
+fish <- mutate(.data = fish,line_number = 1:12)
+
+fish <- mutate(.data = fish,line_number_2 = line_number + 10)
+
+fish
+
+fish <- mutate(.data = fish,line_number_2 = line_number + 100)
+
+fish
+```
+
+### Conditional subsetting
+
+We will use the `filter()` function found in one of the `tidyverse` packages. We will use two arguments: `.data` to refer to the data we wish to subset like we've seen earlier, and the condition which we will subset by. In this case, we want to filter observation of more than 20 individuals.
+
+```{r}
+more_then_20 <- filter(.data = fish, abundance > 20)
+more_then_20
+
+
+not_eilat<- filter(.data = fish,Site != "Eilat")
+not_eilat
+
+only_aqaba <- filter(.data = fish,Site == "Aqaba")
+only_aqaba
+```
+
+We can rewrite the last chuck differently using a pipe symbol `%>%`. This is R for "Take... And then...".
+
+```{r}
+more_then_20 <- fish %>% #take student_grade, and then...
+  filter(abundance > 20) #filter by a condition
+```
+
+Notice how it saves filling the `.data` argument in the function. It may seem like we made the code longer, but it will save a lot of time in the future and make the code more readable. Another advantage is the option to string several actions preformed consecutively on the same data:
+
+```{r}
+
+filter_fish<- fish %>% filter(Site == "Eilat") %>% mutate(new_abundance = abundance+10)
+
+```
+
+If we want to subset columns from our data, we use `select()`. Let's say we want the columns `Site` and `Species` from the `Fish` dataset
+
+```{r}
+
+fish_selected_col<- fish %>% select(Site,Species)
+
+
+```
+
+Now lets remove `line_number` and `line_number_2` from `Fish`
+
+```{r}
+fish <- fish %>% select(-line_number,-line_number_2)
+```
+
+we can use the `-` sign to specify which columns to omit from the data
+
+### Group and summarise
+
+The combination of the functions `Group_by` and `summarise`enable us to explore different aggregations of the data. The `Group_by` function specify the variable (level) you want to group and `summarise` the function you want to oparte on the new group. For example we want to know mean fish `abundance` in each `site`regardless to the species.
+
+```{r}
+mean_abundane_site <- fish %>% group_by(Site) %>% summarise(mean = mean(abundance))
+mean_abundane_site
+
+```
+
+We can get several measures for each site by using `,` inside `summarise` to separate the columns we want to create:
+
+```{r}
+stat_per_site <- fish %>%
+  group_by(Site) %>%
+  summarise(mean = mean(abundance), # calculate the mean
+            total_abundance = sum(abundance), # sum all individual
+            species_number = n_distinct(Species)) # how many distinct species
+
+stat_per_site
+```
+
+*NOTE:* you can break line (press Enter) after comas or pipes ( %\>% ) to make your code cleaner. RStudio will understand that you are still inside a function and will indent the next line to visualize that, like seen above.
+
+in the same manner we can also group by multiple columns:
+
+```{r}
+
+fish$Region <- rep(c("A","B"),each = 6) # create fictional region column
+
+# group by region and species
+
+group_by_species_region<- fish %>% 
+  group_by(Region,Species) %>%
+  summarise("total_ind"= sum(abundance),
+            "observed_site_number" = n_distinct(Site))
+
+group_by_species_region
+
+```
+
+### Spread and Gather functions
+
+Those functions help us move from long data format (i.e, fish data) to wide data format where the species will appear in separate columns
+
+lest start with moving from long format to wide format using the function `spread`
+
+inside `spread` we have 3 argument we must fill:
+
+`spread(data,key,value)`
+
+`data` = the data you want to reshape (fish)\
+`Key` = the column you want to spread (species)\
+`value` = the value attributed to each key (abundance)
+
+-   there are additional argument we can choose to use, i.e - `fill`
+
+you can check the function help page for more info `?spread`
+
+```{r}
+wide_fish<-spread(data = fish,key= Species,value= abundance)
+
+
+wide_fish<-spread(fish,Species,abundance, fill = 0) # additional argument 
+
+
+
+```
+
+What will happen if we have in our data set additional columns with information on the species?
+
+for example, each fish will also have data about its length?
+
+```{r}
+
+# create fake length column
+
+fish_extara <- fish %>% mutate(length = sample(50,nrow(fish))) 
+
+# spread the data
+
+fish_extra_wide<-spread(fish_extara,Species,abundance)  
+
+# check the results:
+
+fish_extra_wide
+
+# not exactly what we intended to do...
+
+```
+
+We first need to remove columns that have species-specific information. lets try again...
+
+```{r}
+
+fish_extara_wide_good<-fish_extara %>% select(-length) %>% spread(Species,abundance)
+
+```
+
+Now lets take wide data format and reshape it to the former long format:
+
+here we have 4 arguments we must fill:
+
+`data` = the data you want to reshape (wide_fish)\
+`Key` = the new name for column you want gather (species)\
+`value` = the new name for the value column (abundance)\
+`columns (...)` = the columns you want to collapse (in our case 3:9)
+
+```{r}
+long_fish <- gather(wide_fish,"species","abundance",3:9)
+
+```
+
+### Merging Data
+
+We can now use a nice function, called `left_join`, to combine this dataframe with our existing weight dataframe. `left_join` takes two datasets which share common columns, and joins them accordingly.
+
+```{r}
+
+
+combined_data <- left_join(fish, # the original data
+                           site_location,# the data you want to add
+                           by="Site") # by which variable to join them, the overlapping column
+
+combined_data
+
+```
+
+### Extra data warngling and data exploration functions
+
+here are some more nice functions that can make your life easier
+
+#### Rename
+
+give column a new name
+
+```{r}
+
+combined_data <- combined_data %>% rename("latitude" = "Lat") # first the new name and then the old one
+
+
+```
+
+#### Move column
+
+Change the order of specific column
+
+```{r}
+
+combined_data<-combined_data %>% relocate(Region,.before = Site)
+
+combined_data<-combined_data %>% relocate(latitude,.after = Lon)
+
+combined_data<- combined_data %>% relocate(3:4,.after = latitude)
+```
+
+#### Arrange
+
+Change the order of the rows
+
+```{r}
+
+combined_data <- combined_data %>% arrange(Region,Site,abundance)
+
+combined_data <- combined_data %>% arrange(abundance)
+
+combined_data <- combined_data %>% arrange(desc(abundance))
+
+```
+
+#### Replace
+
+Additionally replace values in your data
+
+```{r}
+combined_data$Site <- replace(combined_data$Site,
+                              combined_data$Site=="Eilat",
+                              "Gulf of Aqaba")
+
+combined_data$Species <- replace(combined_data$Species,
+                              combined_data$Species=="Chromis chromis",
+                              "Chromis dimidiata")
+
+
+wide_fish[,3:9]<- replace(wide_fish[,3:9],
+                         wide_fish[,3:9] == 0,
+                         NA)
+
+
+```
+
+#### Unique values
+
+find how many species/site/region you have in your data
+
+```{r}
+# if you want to see the unique values:
+
+unique(combined_data$Site)
+
+# if you want to know how many  unique values:
+
+length(unique(combined_data$Site))
+
+# If I want to keep only distinct values:
+
+distinct<-combined_data %>% distinct(Species)
+
+# If i want to filter distinct values but retain all data
+
+distinct<-combined_data %>% distinct(Species,.keep_all = T)
+
+```
+
+#### Get the sum of all columns or rows
+
+get the sum of each fish species
+
+```{r}
+
+colSums(wide_fish[,3:9])
+
+# to ignore the NA values use the `na.rm = T` variable
+
+colSums(wide_fish[,3:9],na.rm = T)
+
+```
+
+Get the sum of individuals in each site:
+
+```{r}
+wide_fish$ind_sum<-rowSums(wide_fish[,3:9],na.rm = T)
+
+```
+
+Get the number of species in each row:
+
+this is a slightly different syntax- we will use the `sum` function:
+
+```{r}
+wide_fish<- wide_fish %>% rowwise() %>% 
+  mutate(total_sp_number= sum(c_across(3:9) > 0, na.rm = TRUE))
+```
+
+#### summary for non-numeric columns:
+
+how many rows I have from each site?
+
+```{r}
+summary.factor(combined_data$Site)
+```
+
+How many from each region?
+
+```{r}
+summary.factor(combined_data$Region)
+```
+
+### Save your data
+
+were done for today!
+
+before closing R lets save our script and save data in csv file
+
+```{r}
+write.csv(combined_data,"combined_data.csv")
+```
+
+**Tip for pro's**
+
+Another (better!) option is to save your object as `Rdata` file.
+
+Saving data as `.Rdata` preserves the original R object structure, allowing for smooth retrieval of complex data structures, including lists and data frames, with their associated attributes. For data frames it will make sure the class of your column will remain as you assign to them and no weird columns will pop up as tend to happen with `csv` files.
+
+```{r}
+save(combined_data,file = "combined_data.Rdata")
+```
+
+To load `Rdata` files simply use the load function:
+
+```{r}
+load("combined_data.Rdata")
+```

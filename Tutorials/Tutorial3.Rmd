@@ -1,0 +1,426 @@
+---
+title: "R intro part 3"
+author: "TG"
+date: "2022-11-11"
+output: 
+  html_document: 
+    toc: yes
+    toc_float:
+      collapsed: no
+    theme: cerulean
+---
+
+Upload libraries
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+```
+
+Upload the example data (from moodel)
+
+```{r}
+
+fish_data <-read.csv("fish_full_data.csv")
+
+```
+
+**Upload your data!**
+
+# 6.5 quick recap on data wrangling
+
+Fish data is the raw data collected from Eilat knolls before and after the storm. This data is more complex and probably resemble more your own data then the small datasets we used in R intro 1 & 2.
+
+Here is a few steps of data curation we should do in this (specific) data before we work - treat it as both a recap for the functions we used in previous lessons and a way to get cosy with the data were gonna work on in the next few classes...
+
+```{r}
+# keep only years 2018 - 2021 (before 2018 we used slightly different protocol)
+
+fish_data<- fish_data %>% filter(Year > 2017)
+
+# remove data sampled in odd sites/knolls 
+
+knolls_to_remove<-c("South bridge reserve","North bridge reserve","south bridge reserve","Tamar","north bridge reserve")
+
+fish_data <- fish_data %>%
+  filter(! Knoll %in% knolls_to_remove) %>% 
+  filter(Site != "North beach")
+
+# remove unsure observations 
+# (confidence = 0 mean the observer was confident in its fish ID )
+
+fish_data<-fish_data %>% filter(Confidence<1)
+
+# remove unnecessary columns
+
+fish_data$X<- NULL
+
+fish_data<- fish_data %>% select(Site:Abundance,coral_cover,Max_depth,Surface_Area)
+
+# relocate the environmental variables
+
+fish_data<-fish_data %>% relocate(coral_cover:Surface_Area,.after = Observer)
+
+```
+
+# 7 for loops
+
+In most knolls, two divers surveyed each knoll. Therefor we have two repetitions for each survey.
+
+```{r}
+fish_data %>% filter(survey_id == "NR_8_2018-09-06") %>% distinct(Observer)
+```
+
+In this example we will use `for` loop to keep (randomly) only one observer for each knoll.
+
+But first - what is `for` loop and how dose it works?
+
+![](for_loop.png)
+
+`for (variable in vector) {}`
+
+inside the `()` we give the iteration instructions
+
+inside the `{}` we providing the actions we want to repeat for each loop iteration. note that inside the `{}` we can write as many code lines we want.
+
+```{r}
+
+for (i in 1:4) { # for each i in the sequence 1,2,3,4
+  
+  print(i) # print it
+  
+}
+
+
+
+for (i in 1:4) {
+  
+  print(i^2) # 
+  
+}
+
+
+
+```
+
+What if we dont want to print the output but save it someplace insted?
+
+```{r}
+v<-vector() # create empty vector
+
+for (i in 1:4) {
+  
+v[i]<-i^2 # save the output to the i place in the vector 
+  
+}
+
+v
+```
+
+Now lets go back to our example. This looks slightly more complex but try to follow the logic - its OK if you don't get it all in the first time!
+
+```{r}
+
+one_observer<-list() # create empty list 
+
+set.seed(1) # make it choose the same random pattern each time so my results wont change every time I run the code
+
+for (i in unique(fish_data$survey_id)) { # for each unique survey_id
+  
+  data <- fish_data %>% filter(survey_id == i) # filter this survey only
+  
+  obs_name <- unique(data$Observer) # what is the observers names?
+  chosen_obs <- sample(obs_name,1)  # randomly choose one observer name 
+ 
+  filter_data<-data %>% filter(Observer == chosen_obs) # keep only the  observation of chosen 
+  
+  one_observer[[i]]<-filter_data # save this data in the i place in the list
+  
+  
+}
+
+one_observer <- bind_rows(one_observer)  # convert from list to data frame
+
+
+# check that it worked
+one_observer %>% filter(survey_id == "NR_8_2018-09-06") %>% distinct(Observer)
+
+
+
+```
+
+from now on we will use only the newly created `one_observer` data. to avoid confusion ill re name it as `fish_data`.
+
+```{r}
+
+fish_data<-one_observer
+
+
+
+```
+
+# 8 Conditios (case_when)
+
+In this data in column year_month the letter `a` represents spring and `b` fall.\
+lets change this to `spring` and `fall` using the `ifelse` function.
+
+The `ifelse` function is operating on rows in data frames and need 3 argument:
+
+`ifelse(test,yes,no)`
+
+`test` - what is my test - basically yes or no question\
+`yes` - what to do if the answer is yes\
+`no` - what do if the answer in no
+
+```{r}
+fish_data$Year_season <- ifelse(month(fish_data$Date) == 6, # if the month is 6
+                         "Spring", # if its true write Spring
+                         "Fall") # if its false write Fall
+
+
+```
+
+I want to also have the year in the column so I re-write the code to include also the year of the survey
+
+```{r}
+
+fish_data$Year_season<-ifelse(month(fish_data$Date)== 6,
+                              paste(year(fish_data$Date),"Spring",sep = " "),
+                              paste(year(fish_data$Date),"Fall",sep = " "))
+
+```
+
+Cool! we have everything ready - now lets switch to the wide data format.
+
+First we will remove columns like `Family` that have specific value for each species as they will later stop us from spreading the data. Second we will sum the number of individuals of the same species in each survey (otherwise the function wont run,line 211). Note that we use `group_by` for all of our metadata columns although using only `survey_id` would suffice. we did it in order to retain all columns in the data (try it once and see the output).
+
+```{r}
+fish_wide <- fish_data %>%
+ select(-year_month,-Family,-Species_2015) %>%
+ relocate(Year_season,.after = Date) %>% 
+ group_by(across(Site:Species)) %>% 
+ summarise(total_ind = sum(Abundance)) 
+
+```
+
+before we will convert the data to the wide format and start plotting we will add two more summary columns that will come to use later on. lets calculate the total number of individuals per survey and the total number of species.
+
+-   since I used `mutate` and `ungroup` instead of `summarise` I could group by `survey_id` only.
+
+```{r}
+fish_wide<-fish_wide %>%
+  group_by(survey_id)%>% 
+  mutate(n_species_sample = n_distinct(Species),
+          n_ind_sample= sum(total_ind)) %>%
+  ungroup()
+```
+
+Finally, lets convert our data to long format:
+
+```{r}
+fish_wide<- spread(fish_wide,Species,total_ind,fill = 0)
+
+```
+
+# 9 plotting
+
+Basic ggplot syntax is the `ggplot()` function call, with the data in parantheses, followed by the `aes` function, where we state what the x and y values are, and then the `geom_` function - what type of plot do we want. Here we want a scatter plot, so we use `geom_point`. Notice how we use `+` when working with ggplot! This means we are adding to the plot more info - data, x and y, type (and later we can add lines, text, colors, etc.).
+
+```{r}
+# basic ggplot
+
+ggplot(data = fish_wide,aes(x = coral_cover, y = Max_depth))+
+  geom_point()
+
+# lets color the point according to the site
+
+ggplot(data = fish_wide,aes(x = coral_cover, y = Max_depth,color = Site)) +
+  geom_point()
+
+# add title and axes labals
+
+ggplot(data = fish_wide,
+       aes(x = coral_cover, y = Max_depth, color = Site))+
+  geom_point()+
+  xlab("Coral cover %") +
+  ylab("Depth (m)")+
+  ggtitle("My Plot")
+
+# lets add simple regrassion line:
+
+ggplot(data = fish_wide,
+       aes(x = coral_cover, y = Max_depth, color = Site))+
+  geom_point()+
+  xlab("Coral cover %") +
+  ylab("Depth (m)") + 
+  ggtitle("My Plot")+
+  geom_smooth(method = 'lm')
+
+
+
+```
+
+#### lets plot the knolls size distribution
+
+```{r}
+# as histogram
+
+fish_wide %>%
+  filter(Year == "2018") %>% 
+  ggplot(aes(x= Surface_Area))+
+  geom_histogram(color="darkblue", fill="lightblue")
+
+# as box plot per site
+
+fish_wide %>%
+  filter(Year == "2018") %>%
+  ggplot(aes(x=Site,y= Surface_Area,fill = Site))+
+  geom_boxplot()
+
+```
+
+-   note - we can use the `%>%` to first adjust our data and than plot it, without savingit first as new data.
+
+#### let see how the coral cover change in each knoll over the years in the NR site:
+
+```{r}
+
+
+fish_wide %>%
+  filter(Site == "NR") %>%
+  ggplot(aes(x = Date,y= coral_cover,group = Knoll,color = Knoll))+
+  geom_line()
+
+
+# we can also add point to line plot
+
+fish_wide %>%
+  filter(Site == "NR") %>%
+  ggplot(aes(x = Date,y= coral_cover,group = Knoll,color = Knoll))+
+  geom_line()+
+  geom_point()
+
+# lets plot it for all sites:
+
+  ggplot(data =fish_wide,aes(x = Date,y= coral_cover,group = Knoll,color = Knoll))+
+  geom_line()+
+  geom_point()+
+  facet_wrap(~ Site)
+  
+# litte bit of cosmetics - lets change the angle of the dates in the x-axis
+
+ggplot(data =fish_wide,aes(x = Date,y= coral_cover,group = Knoll,color = Knoll))+
+  geom_line()+
+  geom_point()+
+  facet_wrap(~ Site)+
+  guides(x =  guide_axis(angle = 45))
+
+
+
+```
+
+**The last steps are to save the plot and all our work for further work (like your MSc thesis).**
+
+To save the plot:
+
+![](save_plot.png)
+
+another option to save your plot is using `ggsave()`
+
+```{r}
+ggsave("coral_cover.png")
+```
+
+this line will save the last plot you created. look at `ggsave` for more saving options.
+
+**lets save the data as well:**
+
+```{r}
+
+write.csv(fish_wide,"fish_wide.csv")
+
+write.csv(fish_data,"clean_fish_data.csv")
+
+```
+
+# 10 Getting Help
+
+![](NotSureIfGoodProgrammer.jpg)
+
+Good programming means working on your Google search skills. Since R is so widely used by people at all levels - chances are someone had already encountered your issue, asked about it, and received a lot of useful answers. A good programmer knows how to ~~copy and paste~~ adapt existing code.
+
+# Class/Homework exersice
+
+Plot the relationship between the number of individuals to the number of species for the different samples in your data.
+
+This exercise will help you understand your data better and detect trends or problems in your data at early stage.
+
+**Try to write the script yourself before checking out the example script found at the end of this documented**
+
+# For next class:
+
+**Have your data organized in wide format and ready for work!**
+
+-   make sure you can upload your data to r studio
+
+-   make sure each row is one sample
+
+-   arrange all the metadata columns on the right and all the species afterwards (like in `fish_wide`)
+
+-   Use the function `class` or `str` to make sure that numeric columns are indeed numeric. (if not use `as.numeric()` to convert them)
+
+-   make sure you don't have summary row at the bottom or top
+
+-   avoid Hebrew text, especially as columns names
+
+#### example script
+
+plotting the relationship between species and individuals number:
+
+```{r}
+
+ggplot(data=fish_wide,
+       aes(x=n_ind_sample,
+           y=n_species_sample,
+           color = Site))+
+  geom_point()
+
+# it will be easier to look at this at log scale:
+
+ggplot(data=fish_wide,
+       aes(x=n_ind_sample,
+           y=n_species_sample,
+           color = Site))+
+  geom_point()+
+  scale_x_log10()+
+  scale_y_log10()
+
+# add some labels:
+
+ggplot(data=fish_wide,
+       aes(x=n_ind_sample,
+           y=n_species_sample,
+           color = Site))+
+  geom_point()+
+  scale_x_log10()+
+  scale_y_log10()+
+  xlab("log10(number of individuals)")+
+  ylab("log10(number of species)")+
+  ggtitle("Realationship between abundance and species")
+
+
+# add regrassion lines:
+
+ggplot(data=fish_wide,
+       aes(x=n_ind_sample,
+           y=n_species_sample,
+           color = Site))+
+  geom_point()+
+  scale_x_log10()+
+  scale_y_log10()+
+  xlab("log10(number of individuals)")+
+  ylab("log10(number of species)")+
+  ggtitle("Realationship between abundance and species")+
+  geom_smooth(method = "lm")
+
+```
