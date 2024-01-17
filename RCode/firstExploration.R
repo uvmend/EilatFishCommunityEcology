@@ -4,3 +4,4 @@ no_juv_transects = subset(transect_df,
                           transect_df$Trans_type != "J")
 dim(no_juv_transects)
 dim(transect_df)
+write.csv(no_juv_transects, "./Data/EilatFishSurveysOnlyTransNoJuv.csv")
