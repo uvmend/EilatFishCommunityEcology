@@ -1,7 +1,8 @@
-df = read.csv("./Data/Full_data.csv")
-transect_df = subset(df, df$survey_method == "Transects")
-no_juv_transects = subset(transect_df, 
-                          transect_df$Trans_type != "J")
+df = read.csv("./EilatFishCommunityEcology/Data/Full_data.csv")
+no_juv_transect = df %>% 
+  subset(survey_method == Transects) %>% 
+  subset(Trans_type == 'J')
+
 dim(no_juv_transects)
 dim(transect_df)
-write.csv(no_juv_transects, "./Data/EilatFishSurveysOnlyTransNoJuv.csv")
+write.csv(no_juv_transects, "./EilatFishCommunityEcology/Data/EilatFishSurveysOnlyTransNoJuv.csv")
