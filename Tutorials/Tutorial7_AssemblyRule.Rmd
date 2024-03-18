@@ -1,0 +1,547 @@
+---
+title: "Assembly Rules"
+author: "TG"
+date: "2024-02-25"
+output: 
+  html_document: 
+    toc: yes
+    toc_float:
+      collapsed: no
+    theme: cerulean
+---
+
+# Overview
+
+In this script we are going to explore **co-occurrence**  and **nestedness** patterns in our data. We will also learn how to generate different **null models** to compare with the observed values we measured.
+
+We will use packages `tidyverse`, `vegan`,and `cooccur` so install and upload these:
+
+```{r message=FALSE, warning=FALSE}
+pacman::p_load(tidyverse)
+pacman::p_load(vegan)
+pacman::p_load(cooccur)
+```
+
+We will load three data tables for this exercise.
+
+1. Perfectly nested data - using this data you will see what to expect if your data was fully nested (very unlikely in real life)    
+
+2. Randomly generated data - this data is expected to show no nestedness patterns  
+
+3. Your data - I’m using our regular fish data. For the code to run quickly in our exercise ill use only the data from the Nature Reserve (NR) at Fall 2018. **You should use your full data!**   
+
+
+```{r message=FALSE, warning=FALSE}
+
+fully_nested <- read_csv("fully_nested.csv")
+
+not_nested <- read_csv("not_nested.csv")
+
+my_data <- read_csv(file = "fish_wide.csv")  #change to your file directory
+
+```
+
+Let’s turn NA to 0 for the 2 example data-sets:
+
+```{r}
+
+fully_nested[is.na(fully_nested)] <- 0 
+
+not_nested[is.na(not_nested)] <- 0
+
+```
+
+Also, let’s subset the species matrix out of our data:
+
+
+```{r}
+my_data$...1<-NULL # remove this weird column that appear because of excel...
+
+NR_2018<-my_data %>% filter(Site=="NR",Year_season=="2018 Fall")
+
+first_sp<-13
+
+species_matrix<-NR_2018[,first_sp:ncol(NR_2018)]
+
+species_matrix<- species_matrix[, colSums(species_matrix != 0) > 0] # remove species with no occurrence in my filtered data
+```
+
+# Co-occurrence
+
+![](Quantifying diversity\coo.png)
+
+## C. Score
+
+
+C.score is a measure for the number of checker board incidence in our matrix. Checker boards are created by species which do not co-occur. We will use function `nestedchecker`
+
+![](Quantifying diversity\cscore.png)
+
+
+```{r}
+
+nested_checker_fish <- nestedchecker(species_matrix) # run the function
+nested_checker_fish #see the results
+
+```
+
+Checkerboard Units =  the number of all 2x2 submatrices where both species occur once but on different sites.  
+
+The C-score = the average number of checkerboard units for each unique species pair.  
+
+The higher the C-score, the less co-occurrence, on average, between all of the species pairs in the matrix. A relatively large C-score indicates a more segregated matrix, and a relatively small C-score indicates a more aggregated matrix. However, within any matrix, there will be a mixture of segregated, aggregated, and random species pairs, all of which contribute to the observed C-score. 
+
+OK- We calculated the C-Score! but how do we know if the observed C-score have ecological meaning or simply reflect what we will get by chance given a dataset with x sites and x species?
+
+**WE WILL USE NULL MODEL!!**
+
+### Null Models
+
+
+we will use function `oecosimu` to generate null models. Other than the data we have 3 other arguments:
+
+`nestfun` - what is the function we want to use, we will use the `nestedchecker`.  
+
+`method` - what is the method to generate the null model.
+
+`nsimul` - how many times to iterate the simulation.
+
+#### Null models types
+
+We will use four different methods to generate the null model:
+
+1. Totally random option which gives equal chance for each cell (“r00”). **THIS IS UNREALISTIC AND SHOULD NOT BE USED TO TEST ECOLOGICAL HYPOTHESES.**  
+
+2. Preserving row frequencies and use column sum as probability of selecting species (“r1”). In simple words - rich sites (samples) remain rich because we fixed the number of species per sample but the pattern of rare and common species are broken. 
+
+3. Preserving species frequencies (“c0”).Common species will remain common and rare species will remain rare but the pattern of rich or poor samples will be broken.  
+
+4. Keeping both row and column sums which take into account relative commonness and site richness (“quasiswap”). Common species will remain common (and rare one rare) and rich sites will remain rich. 
+
+However, since this model is the most restrictive you need to be careful. If your data is too small there would be not many options for swaps and thus your null model will be constricted!
+
+
+![](Quantifying diversity\game.png)
+
+There are many more methods for constructing  null models. Run `?commsim` to view and learn about the available methods.
+
+lets examine some null- models results:
+
+##### Random null model
+
+```{r}
+
+NullResults_r00 <-  oecosimu(species_matrix,
+                             nestfun="nestedchecker",
+                             statistic = "C.score",
+                             method="r00",
+                             nsimul = 100) #run the function
+
+NullResults_r00 # see the results
+
+```
+
+
+Our alternative hypotheses is stated: “statistic is less or greater than simulated values”. p-values lesser than 0.05 indicate that our number of checkerboard units is indeed less or greater than by chance.
+
+To visualize our patterns we can plot the distribution of values received in the simulation and compere it to our observed pattern
+
+```{r}
+
+sim_r00 <-as.data.frame(t(NullResults_r00[["oecosimu"]][["simulated"]])) # convert the relevant part of the list to dataframe
+
+observed <- nested_checker_fish[["C.score"]] # what is the real value for my data
+
+ggplot(sim_r00,aes(x=V1))+
+  geom_histogram(fill = "lightblue",color = "darkblue")+
+  geom_vline(xintercept = observed,color = "darkred",linetype="dashed",size = 1.1)+
+  xlab("Simulated C-scores")+
+  ggtitle("Random Null Model (R00)")
+
+
+```
+
+In this plot we see the histogram of all the simulation values for Number of Checkerboard Units. The red line is the observed Number of Checkerboard Units in our actual data.
+
+You can view the Standardized Effect Size (SES) for each analysis.
+
+![](Quantifying diversity\ses1.png)
+
+```{r}
+
+R00_SES <- NullResults_r00[["oecosimu"]][["z"]] #extract standardized Effect Size
+
+```
+
+
+Let’s do it for the other methods:
+
+##### Fixed rows null model
+
+```{r}
+NullResults_r1 <-  oecosimu(species_matrix,
+                            nestfun="nestedchecker",
+                            statistic = "C.score",
+                            method="r1",
+                            nsimul = 100)
+NullResults_r1
+
+sim_r1 <-as.data.frame(t(NullResults_r1[["oecosimu"]][["simulated"]]))
+
+ggplot(sim_r1,aes(x=V1))+
+  geom_histogram(fill = "lightblue",color = "darkblue")+
+  geom_vline(xintercept = observed,color = "darkred",linetype="dashed",size = 1.1)+
+  xlab("Simulated Number of Checkerboard Units")+
+  ggtitle("Fixed by Site Null Model (R1)")
+
+
+R1_SES <- NullResults_r1[["oecosimu"]][["z"]] #extract standardized Effect Size
+
+R1_SES
+```
+
+##### Fixed columns null model
+
+```{r}
+NullResults_c0 <-  oecosimu(species_matrix,
+                            nestfun="nestedchecker",
+                            statistic = "C.score",
+                            method="c0",
+                            nsimul = 100)
+NullResults_c0 
+
+sim_C0 <-as.data.frame(t(NullResults_c0[["oecosimu"]][["simulated"]]))
+
+ggplot(sim_C0,aes(x=V1))+
+  geom_histogram(fill = "lightblue",color = "darkblue")+
+  geom_vline(xintercept = observed,color = "darkred",linetype="dashed",size = 1.1)+
+  xlab("Simulated Number of Checkerboard Units")+
+  ggtitle("Fixed by Species Null Model (C0)")
+
+
+c0_SES <- NullResults_c0[["oecosimu"]][["z"]] #extract standardized Effect Size
+
+c0_SES
+```
+##### Quasiswap null model
+
+```{r}
+
+NullResults_q <- oecosimu(species_matrix,
+                          nestfun="nestedchecker",
+                          statistic = "C.score",
+                          method="quasiswap",
+                          nsimul = 100)
+NullResults_q
+
+sim_qs <-as.data.frame(t(NullResults_q[["oecosimu"]][["simulated"]]))
+
+ggplot(sim_qs,aes(x=V1))+
+  geom_histogram(fill = "lightblue",color = "darkblue")+
+  geom_vline(xintercept = observed,color = "darkred",linetype="dashed",size = 1.1)+
+  xlab("Simulated Number of Checkerboard Units")+
+  ggtitle("Quasiswap Null Model")
+
+
+qs_SES <- NullResults_q[["oecosimu"]][["z"]] #extract standardized Effect Size
+
+qs_SES
+
+```
+
+
+When taking into account the difference between rich and poor sites as well as the commoness of species we found that the observed C-score is not different than what expected by chance and thus there is no strong patterns of segregation or aggregation in our data.  
+
+Lets see the results of quasiswap null model for our fully nested data:
+
+```{r}
+oecosimu(fully_nested,
+         nestfun="nestedchecker",
+         statistic = "C.score",
+         method="quasiswap",
+         nsimul = 100)
+
+
+```
+
+**As you can see, if a matrix is fully nested, there are no checkerboard units at all and we cannot generate a null model with **`quasiswap`.
+
+
+## Pair-wise Approach
+
+Now we move to pairwise approach which calculates for each pair of species if they tend to:
+
+1. Co-occur - Maybe some kind of facilitation is taking place.
+2. Negative co-occur - Maybe competition.
+3. Random co-occur - No interaction.
+
+We will use the `cooccur` function from the `cooccur` package. 
+
+for the `cooccur` function we need to have our species in the rows and our sites in columns ...we will use the `t()` function to transpose the data.
+
+* note - to calculate the concurrence patterns with the coccur package we need to convert the data to presence-absence data.
+
+
+```{r,message=FALSE, warning=FALSE, r,results='hide'}
+
+t_species_matrix <- species_matrix %>% t() %>% as.data.frame()
+
+t_species_matrix<-decostand(t_species_matrix,"pa") # convert the data to presence/absence 
+
+cooccur_results <- cooccur(mat = t_species_matrix,spp_names = TRUE)
+
+plot(cooccur_results)  #plots heat map
+```
+
+we can then use to calculate SES of our pairwise co-occurrence patterns:
+
+
+```{r}
+cooccurSES =  effect.sizes(cooccur_results) #standrdized effect size
+
+head(cooccurSES)
+
+```
+
+# Nestedness
+
+![](Quantifying diversity\nestedness.png)
+
+when examining nestedness patterns there is 2 main decisions we need to do:
+
+**1.** which index of nestedness to use  
+**2.** which null model we want to use 
+
+
+First we look at the `matrix temperature` which is one index of nestedness (not the best one).
+This index measures the deviation of an observed (packed) matrix from one which is perfectly nested.
+Temperature of 0 means the matrix is completely nested. Temperature of 100 means the matrix is completely random.
+
+
+![](Quantifying diversity\nestedtemp.png)
+
+
+first lets look at the fully nested data
+
+```{r}
+nestedtemp(fully_nested)
+
+```
+
+No surprises here... the temperature = 0 
+
+lets see the score for the not-nested data:
+
+```{r}
+
+nestedtemp(not_nested)
+
+```
+
+Now lets have a look at our data:
+
+
+```{r}
+my_nest_temp <- nestedtemp(species_matrix)
+my_nest_temp
+```
+
+
+we can also plots the temperature matrix. Darker the color means higher the probability of the species extinction from the site
+
+```{r}
+plot(my_nest_temp, xlab = "Species", ylab="Sites",main="Extinction probability")
+```
+
+
+### Null Models
+
+So we have the temperature measure, but s it more or less than expected by chance?  
+
+lets use the quasi-swap method. we will use the same `oecosimu` function as before but this time we will set `nestfun = "nestedtemp"`.   
+
+  
+```{r}
+
+temp_null_qs <- oecosimu(species_matrix, nestfun="nestedtemp",method="quasiswap",nsimul = 100)
+temp_null_qs
+
+temp_sim_qs <- as.data.frame(t(temp_null_qs[["oecosimu"]][["simulated"]]))
+
+observed_temp <- my_nest_temp[["statistic"]][["temperature"]] 
+
+ggplot(temp_sim_qs,aes(x=V1))+
+  geom_histogram(fill = "lightblue",color = "darkblue")+
+  geom_vline(xintercept = observed_temp,color = "darkred",linetype="dashed",size = 1.1)+
+  xlab("Simulated Nestedness Temperature")+
+  ggtitle("Quasuswap null model for Nestedness Temperature")
+
+
+```
+
+You can view the Standardized Effect Size (SES) 
+
+
+```{r}
+temp_ses_qs <-  temp_null_qs[["oecosimu"]][["z"]][["temperature"]] #extract standardized Effect Size
+
+```
+![](Quantifying diversity\SES2.png)
+
+Now that we understand the basic workflow of testing nestedness, we can try other metrics:
+
+1.`nesteddisc` - Number of discrepancies [Brualdi & Sanderson 1999](https://link.springer.com/article/10.1007/s004420050784)    
+
+2.`nestednodf` - Paired overlap and decreasing fill [Almeida-Neto et al., 2008](https://onlinelibrary.wiley.com/doi/10.1111/j.0030-1299.2008.16644.x)   
+
+The `nestednodf` metric also allows you to test hypotheses based on how you order your matrix.For example, this is how we would check for size-based nestedness. If we want to examine if small knolls are nested inside larger knoll we can do so in the following way:
+
+first lets arrange the data by descending knoll size, and subset the species matrix:
+
+```{r}
+size_based_matrix <- NR_2018 %>% arrange(desc(Surface_Area))
+
+size_based_matrix<-size_based_matrix[,first_sp:ncol(size_based_matrix)]
+```
+
+In the `nestednodf` index, nestedness statistic is evaluated separately for columns (N columns) for rows (N rows) and combined for the whole matrix (NODF). If you set order = FALSE, the statistic is evaluated with the current matrix ordering allowing tests of other meaningful hypothesis of matrix structure than default ordering by row and column totals 
+
+We will use `order = FALSE` to check for size-based nestedness. Are smaller knolls nested within bigger ones in their species composition?
+
+
+```{r}
+size_nes <- oecosimu(size_based_matrix,
+                     nestfun="nestednodf",
+                     order = FALSE,
+                     method="quasiswap",
+                     nsimul = 100)
+
+
+size_nes
+
+N.rows<-size_nes[["oecosimu"]][["simulated"]][2,]
+
+N.rows<-as.data.frame(N.rows)
+
+observed_row<-size_nes[["statistic"]][["statistic"]][["N.rows"]]
+
+
+ggplot(N.rows,aes(x=N.rows))+
+  geom_histogram(fill = "lightblue",color = "darkblue")+
+  geom_vline(xintercept = observed_row,color = "darkred",linetype="dashed",size = 1.1)+
+  xlab("Simulated Temperature Nestedness")+
+  ggtitle("Surface area based Nestedness  (quasiswap null model)")
+
+```
+
+Try different metrics and different randomization methods on your data. Like always - pay attention to your research question (testing nestedness in different time periods, for example)
+
+# So how do I apply it to my data?
+
+In the following script there is an example of how to compare different sites/year/treatments and explore which one has higher number of checkerboard units/ temperature.
+
+The best way to do so is to compare the SES of different units (i.e, sites) and thus you first need to chose the index you want to use and than the null model type. After you chose than we copy-paste the relevant script from the lesson into a `for` loop that will apply the same order of function to the different sites. 
+
+
+
+here I'll explore the differences in the NR site over the years
+
+```{r}
+
+NR_all_years<-my_data %>% filter(Site=="NR")
+
+```
+
+I chose to use the Quasi-Swap null model to explore the number of checkerboard units.
+
+
+```{r message=FALSE, warning=FALSE}
+
+nested_list <- list()
+
+for (i in unique(NR_all_years$Year_season)) {
+  
+  one_year <- NR_all_years %>% filter(Year_season == i) # Take one year - i
+  
+  species_matrix <-one_year[,first_sp:ncol(one_year)] # create species matrix
+
+  species_matrix <- species_matrix[, colSums(species_matrix != 0) > 0] # remove species with no occurrence in my filtered data
+ 
+  # explore nesstedness patterns using quasiswap
+  
+  NullResults_q <- oecosimu(species_matrix,
+                          nestfun="nestedchecker",
+                          statistic = "C.score",
+                          method="quasiswap",
+                          nsimul = 1000)
+  
+  # extract the SES and p-value
+   
+  qs_SES <- NullResults_q[["oecosimu"]][["z"]]   
+  pval<- NullResults_q[["oecosimu"]][["pval"]]
+  
+  # save the results into data frame
+  
+  data <- data.frame("year_season" = i,
+                     "SES" = qs_SES,
+                     "P_value" = pval)
+  
+  # save the dataframe into the list
+  
+  nested_list[[i]]<- data
+
+}
+
+ses_qs<-bind_rows(nested_list)
+
+# Add sign for significant values
+
+ses_qs<-ses_qs %>% mutate(significent_sign = case_when(P_value > 0.1 ~ "n.s",
+                                                       P_value > 0.05 & P_value <= 0.1 ~ "(.)",
+                                                       P_value > 0.01 & P_value <= 0.05 ~ "*",
+                                                       P_value > 0.005 & P_value <= 0.01 ~ "**",
+                                                       P_value <= 0.005 ~ "***"))
+
+ggplot(data = ses_qs,aes(x = year_season,y = SES,color = year_season))+
+  geom_point(size = 5)+
+  theme_bw()+xlab("Sample")+
+  ggtitle("C-score - QuasiSwap null model")+
+    geom_text(
+    aes(label = significent_sign, y = SES + 0.2),
+    position = position_dodge(0.9),
+    vjust = 0
+  )
+  
+
+```
+
+
+
+# Idiosyncrasy species
+
+
+Idiosyncratic species are species that are particularly nested/ non-nested.
+We can find idiosyncratic species using the same `nestedtemp` function we used before.
+
+
+```{r}
+
+my_nest_temp <- nestedtemp(species_matrix)
+
+par(mar=c(0.5,4,12,0.5))
+
+plot(my_nest_temp,names=T,kind="incidence") #this is visualization of the incidence of surprises
+
+```
+These are species that are expected to either be preset or absent in a sample but are not. Lower numbers represent higher idiosyncrasy:
+
+```{r}
+Idiosyncrasy_sp <-my_nest_temp$c
+
+Idiosyncrasy_sp<-as.data.frame(Idiosyncrasy_sp)
+
+Idiosyncrasy_sp <- tibble::rownames_to_column(Idiosyncrasy_sp, "species")
+
+```
+
+

@@ -1,0 +1,539 @@
+---
+title: "Quantifying Richness"
+author: "TG"
+date: "2022-02-04"
+output: 
+  html_document: 
+    toc: yes
+    toc_float:
+      collapsed: no
+    theme: cerulean
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Overview
+This markdown file is designed to help you implement the material covered in today's class on your data.
+As always, you should run the relevant code into a new `.R` file (in your R project) for your analyses.
+
+As always, we start by loading the packages we will use:
+
+```{r message=FALSE, warning=FALSE}
+pacman::p_load(vegan)
+pacman::p_load(tidyverse)
+pacman::p_load(plotrix)
+pacman::p_load(rareNMtests)
+pacman::p_load(mobr)
+```
+
+Once loaded, we continue by importing the dataset
+
+```{r message=FALSE, warning=FALSE}
+my_data <- read_csv(file = "fish_wide.csv")  #change to your file directory
+my_data$...1<-NULL # remove this weird column that appear because of excel...
+
+
+```
+
+Ok, let's start!
+
+First of all, This a plot with the mean (±SE) richness in each Survey, What is wrong with this plot?
+
+```{r}
+# the next line reorder my years in chronological order
+
+my_data$Year_season <- factor(my_data$Year_season,levels = c("2018 Fall",
+                                         "2020 Spring",
+                                         "2020 Fall",
+                                         "2021 Spring"),ordered = T) 
+
+# plot the mean richness at each year of surveying
+
+
+richness_plot <- my_data %>% 
+  mutate(richness = rowSums(my_data[13:length(my_data)]>0)) %>% 
+  ggplot()+
+  aes(x  = Year_season, y = richness)+
+  stat_summary(geom = "bar",fun.data = mean_se,fill = "lightblue")+
+  stat_summary(geom = "errorbar", fun.data = mean_se, position = "dodge",width = 0.3)+
+  xlab("Year_season")+
+  ylab("Mean richness")
+
+richness_plot
+
+
+```
+
+### Individual Based Rarefaction
+
+We will now recreate the first plot, only this time - we take sampling effort into account.
+
+We begin by first using just the `species matrix` portion of our data - that is, a subset which only includes the species columns. We will set a variable which indicates which column is the first species column:
+
+```{r}
+first_species <- 13
+```
+
+We can now subset our data to create the species matrix dataframe, which we will call `sp_matrix`:
+
+```{r}
+sp_matrix <- my_data[,first_species:length(my_data)]
+```
+
+We are going to use the `rarefy` function. Let's learn more about it using `?rarefy`.
+Some of the important arguments are:
+x = is the dataframe we will use
+sample = how many individuals to use in the rarefraction.
+
+We want to define the sample size for the rarefaction. We will take the minimum number of records in a single site. This is because want to avoid extrapolating to sample size larger than the one observed.
+
+```{r}
+raremax <- sp_matrix %>% rowSums() %>% min()
+raremax
+```
+
+Sometimes when we rarefy by sample, we may see an extremely low individual count. Rarefying to a low number such as 3 isn't really helpful. Let's observe how abundance varies in our dataset:
+
+```{r}
+sp_matrix %>% 
+  mutate(abundance = rowSums(.)) %>% 
+  ggplot()+
+  aes(x = abundance)+
+  geom_histogram()+
+  scale_x_log10() # for clarity
+```
+
+We plotted the x-axis on a `log10` scale for better clarity. You can see that some knolls have extremely low abundances. We will remove these samples for this demonstration and stay only with samples that have more than 30 individuals  
+
+```{r}
+my_data_clean <- my_data %>% 
+  mutate(abundance = rowSums(my_data[first_species:length(my_data)])) %>% 
+  filter(abundance > 30) %>%  # set a threshold
+  mutate(abundance = NULL) # remove this column so we will have a fresh start
+
+sp_matrix <- my_data_clean[,first_species:length(my_data_clean)]
+
+
+```
+
+now let's examine the lowest abundance count:
+
+```{r}
+raremax <- sp_matrix %>% rowSums() %>% min()
+
+raremax 
+```
+
+
+We can see that now the sample with the least number of individuals sampled has 31 individuals.
+
+Now we proceed with the rarefaction. We will see what is the species richness in each site when we sample randomly 31 individuals:
+
+```{r}
+rare_index_raremax <- rarefy(x=sp_matrix,sample=raremax)
+```
+
+We will now mutate our data by adding a `rarefied_richness` column, and plot a richness barplot again.
+
+```{r}
+rare_richness_plot <- my_data_clean %>% 
+  mutate(rarefied_richness = rare_index_raremax) %>% # add the rarefied richness column
+  ggplot()+
+  aes(x  = Year_season, y = rarefied_richness)+
+  stat_summary(geom = "bar",fun.data = mean_se,fill = "deepskyblue2")+
+  stat_summary(geom = "errorbar", fun.data = mean_se, position = "dodge",width = 0.3)
+
+rare_richness_plot
+
+```
+
+Compare `rare_richness_plot` to `richness_plot`. How are they different?
+
+> but maybe I used worng cut off? (kolls with more than 30 ind?)
+
+therefore its better to plot the individual rarefaction curve using `rarefaction.individual` function.  
+
+## Individual Based Rarefaction Curve 
+
+#### Knoll scale
+
+let see how the function works for a single sample:
+
+* Check the help page for the function to understand the different arguments...    
+
+
+
+```{r}
+one_sample_rare<-rarefaction.individual(sp_matrix[1,], method = "sample-size", q = 0)
+
+head(one_sample_rare) # show only the top rows of my data
+```
+
+  
+This function calculate the richness for any number of individuals sampled in this knoll.  
+
+**note-** in the first sample of my data there were 120 individuals therefor this is the max sample size for this sample.   
+
+**note 2-** Do you remember Hill numbers and q=0 from our last lesson? Its mean that we are calculating species richness.     
+
+We can plot it:  
+
+```{r}
+
+ggplot(data = one_sample_rare,aes(x = `sample-size`,y = `Hill (q=0)`)) +
+  geom_line() +
+  xlab("Richness")+
+  ylab("Individuals")
+
+```
+  
+This is the rarefaction curve for only **one** sample. Now lets plot all of the samples together 
+
+* it can look very messy depending on how many rows of data you have... 
+
+In the following loop we applying the rarefaction curve to each row ( = sample) in the data.   
+```{r message=FALSE, warning=FALSE}
+
+ind_based_rare_all<-list() # empty list
+
+for (i in 1:nrow(my_data)) { # for each row...
+
+one_knoll <- my_data[i,] # filter
+one_knoll_sp_matrix <- one_knoll[,first_species:ncol(one_knoll)] # create sp_matrix
+
+rarefaction <- rarefaction.individual(one_knoll_sp_matrix, method = "sample-size", q = 0) # apply rarefaction function
+
+rarefaction$Year_season<-one_knoll$Year_season # add which year_season to the data
+rarefaction$survey_id<-one_knoll$survey_id # add the survey_id to the data
+ind_based_rare_all[[i]]<- rarefaction # save in my list
+  
+}
+
+ind_based_rare_all<-bind_rows(ind_based_rare_all) # convert from list to data frame
+
+colnames(ind_based_rare_all)<-c("Individuals","Richness","Survey","sample") # change columns names
+
+# plot
+
+ggplot(ind_based_rare_all,aes(x=Individuals,y=Richness,group = sample ,color = Survey))+
+  geom_line()
+```
+
+Cool!  
+
+Here we explored the knoll-scale.   
+In my case it might make more sense to aggregate all the knolls sampled at the same survey and thus use larger scale for the analyses.  
+
+#### Survey scale
+
+Now we will sum the total individuals of each species in each `Year_season`.    
+
+```{r}
+group_data <- my_data %>% 
+  select(Year_season,13:ncol(my_data)) %>% # in this case, we don't other var except year_season
+  group_by(Year_season) %>% #this tells R to view my_data in terms of groups of year_season
+  summarize(across(.fns = sum), .groups = "drop") #summarize all other values by summing all the rows in each group. (.groups = "drop" is to ungroup the data after we are done)
+```
+
+The result is a much shorter dataset, where each row is the sum abundance of each species.  
+
+```{r eval=FALSE, include=T}
+group_data
+```
+
+To create individual based rarefaction curve for each `Year_season` we will run the same loop we run before, but this time on the grouped data.      
+
+```{r}
+
+
+ind_based_rare<-list()
+
+for (i in unique(group_data$Year_season)) {
+
+one_year<-group_data %>% filter(Year_season == i)
+year_sp_matrix <- one_year[,first_species:ncol(one_year)]
+
+rarefaction <- rarefaction.individual(year_sp_matrix, method = "sample-size", q = 0)
+
+rarefaction$Year_month<-i
+
+ind_based_rare[[i]]<- rarefaction
+  
+}
+
+ind_based_rare<-bind_rows(ind_based_rare)
+
+colnames(ind_based_rare)<-c("Individuals","Richness","Survey")
+
+ggplot(ind_based_rare,aes(x=Individuals,y=Richness,color = Survey))+
+  geom_line(size = 1.5)
+```
+
+
+## Sample-Based Rarefaction Curves
+
+
+
+Now we will rarefy by sample.  
+
+When we use Sample-based rarefaction we summing up the number of new species that added with each new sample and ignoring the number of individuals belonging to each species. Therefore we neutralize the effect of large schools (herds/flocks etc.) on the rarefaction curve shape.    
+
+We will use the function `rarefaction.sample` from the package `rareNMtests`. 
+
+In this function the first argument is the data name,  the method argument `sample-size` means that the function will use incidence data and `q = 0` is used for species richness rarefaction.  
+
+Now let's create sample based rarefaction curve for Fall 2018.  
+
+
+```{r}
+Fall_2018<-my_data %>% filter(Year_season =="2018 Fall")
+Fall_2018_sp_matrix <- Fall_2018[,first_species:ncol(Fall_2018)]
+
+rarefaction_2018 <- rarefaction.sample(Fall_2018_sp_matrix, method = "sample-size", q = 0)
+
+ggplot(data = rarefaction_2018,aes(x = `sample-size`,y = `Hill (q=0)`))+geom_line()
+
+```
+
+
+Lets create 
+
+```{r}
+sample_based_rare<-list()
+
+for (i in unique(my_data$Year_season)) {
+
+one_year<-my_data %>% filter(Year_season == i)
+year_sp_matrix <- one_year[,first_species:ncol(one_year)]
+
+rarefaction <- rarefaction.sample(year_sp_matrix, method = "sample-size", q = 0)
+
+rarefaction$Year_month<-i
+
+sample_based_rare[[i]]<- rarefaction
+  
+}
+
+sample_based_rare<-bind_rows(sample_based_rare)
+
+colnames(sample_based_rare)<-c("samples","richness","Survey")
+
+ggplot(sample_based_rare,aes(x=samples,y=richness,color = Survey))+geom_line(size = 1.2)
+
+
+```
+
+
+## Re-scaleing of Sample based Rarefactions
+
+Sample-based rarefaction can be highly affected from differences in species density among the varies sampling units. Thus, less dense community can appear less rich. To avoid this pitfall we can re-scale the x-axis of our Sample-based rarefaction to the mean number of individuals each sample is representing. we do so by multiplying the sample number at the mean individual number per gorup.  
+
+
+The first step is to calculate how many individual you have in each sample. In my data I already have the number of individual per sample in the column `n_ind_sample` - we created it together in R intro 3. if you don't have such column you can create it with this syntax:   
+
+```{r}
+
+mean_density<-my_data
+
+mean_density$sum_ind<-rowSums(mean_density[13:ncol(my_data)]) 
+
+
+```
+
+The next step is to calculate the **mean** number of individuals per group you comparing, in this case `year_season`. 
+
+```{r}
+
+mean_density <- mean_density %>%
+  group_by(Year_season) %>%
+  summarise("mean_ind" = mean(sum_ind)) %>% 
+  rename("Survey"="Year_season" )
+
+```
+
+Now well simply create a new x-axis to my sample based rarefaction by multiplying the sample number at the mean density for each group
+
+```{r}
+
+sample_based_rare <- left_join(sample_based_rare,mean_density)
+
+sample_based_rare<-sample_based_rare %>%
+  mutate("Individuals" = samples * mean_ind)
+
+
+```
+
+and plot...
+
+```{r}
+ggplot(data = sample_based_rare, aes(x = Individuals, y = richness,color = Survey ))+geom_line(size = 1.2)+
+  ggtitle("Sample Based rarefaction rescaled to individuals density")
+```
+
+When correcting to the number of individuals sampled we get a different picture!
+
+```{r}
+sample_based_rare %>% filter(samples == 52)
+```
+
+check the paper *Quantifying biodiversity: procedures and pitfalls in the measurement and comparison of species richness* by Gotelli & Colwell for more information.  
+
+## Shannon-Winner Rarefaction Curves
+
+In addition to compering richness among surveys, we can also compare different diversity indexes such as the effective number of species according to Shannon-Winner index (which give less weight to rare species).  
+
+To do so, all we need to do is change the `q` argument in the `rarefaction.sample` function and set it to `q=1`. 
+
+
+```{r}
+shannon_rare<-list()
+
+for (i in unique(my_data$Year_season)) {
+
+one_year<-my_data %>% filter(Year_season == i)
+year_sp_matrix <- one_year[,first_species:ncol(one_year)]
+
+rarefaction <- rarefaction.sample(year_sp_matrix, method = "sample-size", q = 1)
+
+rarefaction$Year_month<-i
+
+shannon_rare[[i]]<- rarefaction
+  
+}
+
+shannon_rare<-bind_rows(shannon_rare)
+
+colnames(shannon_rare)<-c("samples","Shannon","Survey")
+
+ggplot(shannon_rare,aes(x=samples,y=Shannon,color = Survey))+geom_line(size = 1.2)+
+  ylab("Effective number of Species - Shannon index")
+
+```
+
+## Covrage based rarefactions:
+
+Traditional rarefaction can misrepresent the relationships between the richness of the communities being compared because a sample of a given size may be sufficient to fully characterize the lower diversity community, but insufficient to characterize
+the richer community.  
+
+Therefore, We can measure richness as a function of sampling coverage, and thus, compare communities equal completeness rather than equal size.  
+
+```{r}
+coverage_based_rare<-list()
+
+for (i in unique(my_data$Year_season)) {
+
+one_year<-my_data %>% filter(Year_season == i)
+year_sp_matrix <- one_year[,first_species:ncol(one_year)]
+
+rarefaction <- rarefaction.sample(year_sp_matrix, method = "coverage", q = 0)
+
+rarefaction$Year_month<-i
+
+coverage_based_rare[[i]]<- rarefaction
+  
+}
+
+coverage_based_rare<-bind_rows(coverage_based_rare)
+
+colnames(coverage_based_rare)<-c("samples","richness","Survey")
+
+ggplot(coverage_based_rare,aes(x=samples,y=richness,color = Survey))+
+  geom_line(size = 1.2)+
+  xlab("Covrage")+
+  ylab("Richness")
+
+```
+
+
+check the paper *Coverage-based rarefaction and extrapolation: standardizing samples by completeness rather than size* by Chao & Jost form more information
+
+# Extra material
+
+Here are some more rarefaction analyses worth knowing and can be useful for course or your research. 
+
+## compare rarefaction curves
+
+Now we are going to compare to rarefaction curves using `EcoTest.sample` function from `rareNMtests` package.
+
+![](Quantifying diversity\ecotest.png)   
+  
+The ecological null hypothesis H0 is that two (or more) reference samples, represented by either abundance or incidence data, were both drawn from the same assemblage of N* individuals and S species. Therefore, any differences among the samples in species composition, species richness, or relative abundance reflect only random variation, given the number of individuals (or sampling units) in each collection. The alternative hypothesis, in the event that H0 cannot be rejected, is that the sample data were drawn from different assemblages. 
+
+
+```{r warning=FALSE,results='hide'}
+
+sp_matrix<-my_data %>% select(Year_season,13:ncol(my_data)) %>% arrange(Year_season)
+
+sp_matrix<-as.data.frame(sp_matrix) # make sure your data is defined as data.frame
+
+eco_test <- EcoTest.sample(sp_matrix[,-1], by= sp_matrix[,1],niter = 500, MARGIN=1,q=0)
+
+```
+
+
+```{r}
+
+plot(eco_test)
+
+```
+
+
+
+
+## Scale-dependent biodiversity changes
+
+We can examine how species abundance distribution, number of individuals, and population aggregations are reflected in differences between rarefaction curves. We will use the `mobr` package.  
+
+This package contains data suitable for our demonstration. Let's load it like so:
+
+```{r}
+data(inv_comm)
+data(inv_plot_attr)
+```
+
+This creates two datasets: a species matrix and another table with the sample information.   
+
+To use the package functions, first we need to prepare the data using the `make_mob_in` function.  
+
+`comm` = community matrix (only species)
+`plot_attr` =  the meta-data for each sample (only the groups we want to compare) and coordinate if we have and want to use them.
+`coord_names`  = column names of longitude and latitude 
+
+```{r}
+inv_mob_in = make_mob_in(comm = inv_comm, plot_attr =  inv_plot_attr, coord_names = c("x","y"))
+```
+
+Then, we run the analysis. The `get_delta_stats` function has several arguments. The two important ones are:
+* `mob_in` - the prepared data that we just created.
+* `env_var` - the grouping column that we want to compare    
+
+We run it like so:
+
+```{r, results='hide'}
+inv_deltaS = get_delta_stats(mob_in = inv_mob_in, 
+                             env_var = 'group',
+                             type='discrete', log_scale=FALSE, n_perm = 20)
+
+
+```
+
+```{r}
+plot(inv_deltaS, 'b1')
+```
+
+This produces several plots:  
+
+
+Top row shows the rarefactions: spatial sample based rarefaction (sSBR), non-spatial sample based rarefaction (nsSBR), and individual based rarefaction (IBR).
+
+Middle row shows the effect of aggregation (agg), number of individuals (N), and species abundance distribution (SAD) at differet scales for each group.
+
+Last row shows the effect of species aggregation, number of individuals, and species abundance distribution across scales.
+
+![](Quantifying diversity/mobr.png)
+
+In this example, SAD and N has contrasting effects which increase with sampling effort.
+
+

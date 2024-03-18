@@ -1,0 +1,559 @@
+---
+title: "Ordinations"
+author: "TG"
+date: "2024-02-12"
+output: 
+  html_document: 
+    toc: yes
+    toc_float:
+      collapsed: no
+    theme: cerulean
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Overview
+
+Today we are going to cover different methods of ordinations.
+
+As mentioned, there are 3 main choices to make: 
+
+1. Direct vs Indirect ordination methods.
+2. Linear vs Unimodal hypothesized response of the community to the Environmental gradient.
+3. Do we want to use distance based measures?
+
+![](Quantifying diversity\summary.png)
+
+We'll start, like always, by loading the packages, loading the data, setting a `first_species` variable, and creating a `species_matrix` data:
+
+```{r message=FALSE, warning=FALSE}
+pacman::p_load(tidyverse)
+pacman::p_load(vegan)
+pacman::p_load(ggfortify)
+```
+
+```{r message=FALSE, warning=FALSE}
+my_data <- read_csv(file = "fish_wide.csv") #change to your file directory
+
+my_data$...1<-NULL
+
+my_data$Year_season <- factor(my_data$Year_season,levels = c("2018 Fall",
+                                         "2020 Spring",
+                                         "2020 Fall",
+                                         "2021 Spring"),ordered = F)
+```
+
+Now I can create my species matrix, like so:
+
+```{r}
+
+first_species <- 13
+species_matrix <- my_data[,first_species:length(my_data)]
+
+```
+
+
+# Data Transformation
+
+Another important decision is how we transform our data. There are several transformation methods which were discussed in class, each suitable for different scenarios and  reveal different ecological patterns. Make sure you choose a transformation that is suitable to your needs!
+
+We will perform several of them using the `decostand` function. Run `?decostand` to learn more about the function. 
+
+**Hellinger**: Particularly suited to species abundance data, this transformation gives low weights to variables with low counts and many zeros. The transformation itself comprises dividing each value in a data matrix by its row sum, and taking the square root of the quotient.
+
+```{r}
+hlge_trans_data <- decostand (species_matrix, method="hellinger")
+```
+
+**Logarithmic**: Transforming positive data to a logarithmic scale reduces the range of the data set. Therefore, it gives less weight for the common species and more to rare ones.Larger log bases will give more power for rare species. The relative change of a variable, whose values are expressed as an exponent with respect to some base, is emphasized over its absolute change.
+
+```{r}
+log_trans_data <- decostand (species_matrix, method = "log",base = 10)
+```
+
+**Wisconsin double standardization**: In this transformation, the abundance values are first standardized by species maximum standardization, and then by sample total standardization, and by convention multiplied by 100. Their rationalization for the subsequent sample total standardization was that not all samples had the same number of measurements, and that the stand total standardization achieved a more uniform basis for comparison.
+
+We use the `wisconsin` function:
+
+```{r}
+wis_trans_data <- wisconsin(species_matrix) 
+```
+
+# PCA
+
+Indirect ordination with a linear response.
+
+Without going into the underlying mathematics, PCA attemps to simplify a multi-dimensional environment to a 2D scatter plot, allowing us to explore visual trends. It does so by finding arbitrary axes in which the highest variance is present. The one axis in which the highest variance is apparent is called the first principal component and each subsequent principal component explains lower amount of the variance.
+
+![](Quantifying diversity\pca.png)
+
+
+https://www.youtube.com/watch?v=BfTMmoDFXyE&ab_channel=J.XinzhiLi
+
+
+For this analysis we need to have less (or equal) species than samples (rows) in our data.  
+Let's test it:
+
+```{r}
+sample_number <- nrow(species_matrix)
+sample_number
+
+species_number <- ncol(species_matrix)
+species_number
+
+sample_number >= species_number 
+
+```
+
+**If you have more samples than species - great! you can skip the next 2 chunks of code (equal number is also fine).** 
+
+**If you have more species than sites - you need to drop some of the species so you will have equal number of sites and samples. We will keep the most abundance species and drop the rarest ones.** 
+
+In my case I don't need to drop species, so **for the example sake** I'll create smaller data frame with only 100 rows and filter it so ill keep only the most abundant 100 species. 
+
+
+lets create the example data: 
+
+```{r}
+
+example_data <- species_matrix[1:100,]
+
+sample_number <- nrow(example_data)
+sample_number
+
+species_number <- ncol(example_data)
+species_number
+
+sample_number >= species_number 
+```
+
+Now I have more species than rows! 
+lets filter the number of species according to the number of rows based on their abundance rank
+
+```{r}
+
+sample_number #  number of rows 
+
+species_abundance <- colSums(example_data) # sum the abundances of each species
+
+abund_rank <- sort(species_abundance, decreasing = T) # this will rank according to how many individuals were observed in all the data
+
+sp_names <- names(abund_rank[1:sample_number]) # 1 is most common, get until we get the n-th most common
+
+filterd_sp_matrix <- example_data %>% select(all_of(sp_names)) 
+
+
+```
+
+
+If you had to subset you data continue to work with the `filterd_sp_matrix`. Ill keep on going with my original data `species_matrix`.   
+
+
+We are now ready to perform the PCA. We will first show the untranformed data:
+
+```{r fig.height = 10, fig.width = 10, fig.align = "center", warning = FALSE, message= FALSE}
+
+
+PCA_results <- princomp(species_matrix, scores = T)
+
+
+autoplot(PCA_results,loadings = TRUE,loadings.label = TRUE,
+         data = my_data,
+         colour = 'Year_season') 
+
+```
+
+To understand how much variance is explained by each axis:
+(Look for the `Proportion of Variance` section for each Comp.)
+
+
+```{r eval = F}
+summary(PCA_results)
+
+```
+
+We can see that the first two components can explain around 70% of the variance in the data (which is pretty high!) it means that our visual representation is good.  
+
+
+You can view the scores and loadings of the PCA by using these lines:    
+
+the `scores` are basically the "coordinate" of the site in all the axes. The location of each point in the PCA plot is the `comp.1` and `comp.2` of the site (because we plotted the first 2 axes).
+
+the `loadings`  describe the importance of the independent variables (species in our case),and provide information about which variables give the largest contribution to the components. 
+
+```{r eval = F}
+
+PCA_results$scores  # the scores of each sites on each PCA axis
+PCA_results$loadings   # the loading of each species on each PCA axis
+
+```
+
+Now lets think for a second about the results we receive, we see 3 long arrows that represent 3 species that was used to differentiate the sites and all the rest of the species jumbled together. 
+
+![](Quantifying diversity\fish schools.png)
+
+lets see how its look in the data:
+
+*Spratelloides gracilis* appear only once in data but with school of 1000 ind.  
+*Pseudanthias squamipinnis* and *Chromis viridis* appear in many knolls, usually in large numbers.  
+ 
+
+```{r}
+species_matrix$`Spratelloides gracilis` 
+species_matrix$`Pseudanthias squamipinnis`
+
+```
+
+
+## PCA after data transformation 
+
+Ok, so we understood why we might want to use transformations on our data. let's perform first the log-transformation on the data give more weight for the rare species over the common one and then the Hellinger transformation to  deal with many 0 and rare species in my data and rerun the analysis. 
+
+
+```{r fig.height = 10, fig.width = 10, fig.align = "center", warning = FALSE, message= FALSE}
+
+log_trans_data <- decostand(species_matrix, method = "log",base = 10) 
+
+helg_log_trans_data <- decostand(log_trans_data, method = "hellinger") # do hellinger on the log-transformed data  
+PCA_helg_log_results <- princomp(helg_log_trans_data, scores = T) # run the PCA analyses
+
+
+autoplot(PCA_helg_log_results,
+         loadings = TRUE,
+         loadings.label = TRUE,
+         loadings.colour = 'black',
+         loadings.label.colour = "black", 
+         data = my_data,
+         colour = 'Year_season')  
+
+```
+
+and the data behind...
+
+  
+```{r eval = F}
+summary(PCA_helg_log_results) #  Importance of components
+PCA_helg_log_results$scores  # the scores of each sites on each PCA axis 
+PCA_helg_log_results$loadings   #the loading of each species on each PCA axis
+```
+
+
+You can see how transformation affected the results.
+Make sure you choose the appropriate transformation method. 
+
+more PCA visualization:  
+
+https://cran.r-project.org/web/packages/ggfortify/vignettes/plot_pca.html
+
+# RDA
+
+This is a direct ordination with a hypothesized linear response to an environmental factor.
+We use direct ordinations to test whether an environmental factor is affecting our community.
+
+**Note -** in this analyses we don't need to have less species than sites, so if you used subset before you should now use your full data. 
+
+Ill use the log than Hellinger transformed data `helg_log_trans_data`
+
+The process is similar to modeling. We use the `rda` function and set our community (transformed) as the dependent variable ("explained"), and the environmental factors as independent variables ("predictors"). We set the full data, the one containing all the environmental factors, in the `data` argument: 
+
+```{r fig.height = 10, fig.width = 10, fig.align = "center"}
+
+
+
+rda_results <- rda(helg_log_trans_data ~ Year_season + Site + Surface_Area + Max_depth,
+                data = my_data,
+                na.action = na.omit) 
+
+rda_results
+
+
+```
+
+
+Remember. When you see "Inertia", think "Variance". When you see "constrained" think "explained". So, in this example you can see that a proportion of 0.1121 of the inertia is explained. In words, the Year_season,Site, knoll surface area and  depth affects ~10% of the all the community variance.
+
+
+now lets plot the RDA using the `plot` function.
+
+
+```{r}
+plot(rda_results,display = c("site","cn"))
+
+```
+
+
+useful terminology for RDA plots:  
+
+* sites = the scores (coordinates) or each row (i.e sample)    
+* species = the unconstrained variables, actual species in our case    
+* bp = bi plot, the effect of each constrained variable on the data    
+* cn = centroid of non-continues constrained variable (for example Site or season)    
+
+
+
+```{r}
+colvec <- c("darkgoldenrod1", "cadetblue1", "aquamarine3","antiquewhite4") #  colors according to your group
+
+
+
+plot(rda_results) # plot RDA
+
+with(my_data, points(rda_results,
+                     display = "sites", col = colvec[Year_season],
+                     pch = 21, bg = colvec[Year_season]),cex=0.5) # add color to the scores
+
+with(my_data, legend("bottomright", legend = levels(Year_season), bty = "n",
+                       col = colvec, pch = 21, pt.bg = colvec)) # add legend
+
+orditorp(rda_results,display = "species",choices = c(1, 2),air =1, col = "red") # add labels to some species
+
+text(rda_results, display = "cn", cex = 1, col = "blue") # add labels to centroieds
+
+
+
+```
+
+here is more info on how to customized your RDA:  
+
+https://r.qcbs.ca/workshop10/book-en/redundancy-analysis.html
+
+you can see different colors names in the following link:
+
+https://www.datanovia.com/en/blog/awesome-list-of-657-r-color-names/
+
+### RDA selecting variables
+
+If you have many environmental variables you can use `ordistep` to choose which variables to include in your model.
+
+In `ordistep` the criteria for including the variable is based on both significance of the newly selected variables, and the comparison of adjusted variation (R2adj) explained by the selected variables to R2adj explained by the global model (with all variables); if the new variable is not significant or the R2adj of the model including this new variable would exceed the R2adj of the global model, the selection will be stopped.
+ 
+ 
+
+```{r}
+
+ordistep(rda_results)
+
+```
+
+### RDA significance
+
+
+The significance of your RDA can be tested using the function `anova.cca` which preform Anova like permutation tests. 
+
+* don't be confused by the `cca` in the function name it can operate also on RDA
+
+*Use either significance testing or model selection approch - not both!*
+
+```{r}
+
+anova.cca(rda_results,by = "term")
+
+```
+
+# CCA
+
+CCA is another direct ordination, which means it is used to test ecological hypotheses. However, CCA is more suitable if a response is unimodal.
+
+![](Quantifying diversity\unimodel.png)
+* note - if you working in relatively small scale (like in my case), even classic unimodal variables such as depth or temperature can be linear in your data, because you have observations from only small part of the curve.   
+
+
+The process is similar to RDA. Transform and use the `cca` function. This time we will use log transformation:
+
+```{r fig.height = 10, fig.width = 10, fig.align = "center"}
+
+log_trans_data_full <- decostand(species_matrix, method="log",base = 10) 
+
+cca_results <- cca(log_trans_data_full ~ Year_season + Site + Surface_Area + Max_depth,
+                data = my_data,
+                na.action = na.omit) 
+
+plot(cca_results, scaling = 3)
+
+cca_results
+```
+
+
+# nMDS
+
+An indirect method of ordination. It attempts to project the points on a low number of axis while maintaining their multi-dimensional distance.
+
+first step (like allways) is choose data transformation. I'll use the log -> hellinger transformation I used before
+
+```{r}
+nmds_data <- helg_log_trans_data
+
+```
+
+
+Second step is to choose the dissimilarity matrix we want to use in order to later calculate the distances between sites. What happens "behind the curtains" is conversion of our data to dissimilarity matrix.
+
+![](Quantifying diversity\distance matrix.png)
+I'll use the Bray Curtis index of dissimilarity (remember bray? we also this index to calculate beta diversity)
+
+```{r}
+nmds_data<-vegdist(nmds_data,method = "bray")
+```
+
+
+The next step is to preform the nMDS analyses that will calculate the distances between samples. We will use the `metaMDS`.   
+
+
+```{r}
+ord  <- metaMDS(nmds_data,trace = FALSE)
+```
+
+  
+We can see the Shepard plot of the nMDS. This described the "stress", Or, how well the nMDS is doing keeping the dissimilarity between points the same.  
+ 
+
+```{r}
+stressplot(ord)
+
+```
+   
+*BTW - this plot is like assumption tests in models you should look at it but you don't need to present it in your final project...*
+
+Large scatter around the line suggests that original dissimilarities are not well preserved in the reduced number of dimensions. You want to keep the stress as low as possible (anything above 0.2 is suboptimal).
+
+
+Now let's check out the stress:
+
+```{r}
+ord$stress
+
+```
+
+OK, we preformed the analyses **now we can do 2 things:**
+
+**1.** Visualize our results by plotting the nMDS  
+**2.** Run statistic analyses
+
+### 1. Visualize nMDS
+
+Let's plot:
+
+```{r fig.height = 10, fig.width = 10, fig.align = "center"}
+
+plot(ord)
+
+```
+
+We can add some more information to the plot like different color for the different groups and convexhull 
+
+
+* Note - you need ro run the lines together. Either mark all of them and than press `run` or `ctrl`+`enter` or (in r markdown) use the green arrow in the upper corner named -  `run current chunk`
+
+```{r message=FALSE, warning=FALSE}
+
+ordiplot(ord, type = "n",main = paste("stress=",round(ord$stress,3))) # create the plot
+orditorp(ord, label = T, display = "sites", col = colvec[my_data$Year_season],pch = 16) # add scores and color by sites
+ordihull(ord, groups = my_data$Year_season, draw = "polygon",alpha = 0.35,label=F ,lty = 1,col = colvec) # add convex hull
+legend("bottomright", legend = levels(my_data$Year_season), bty = "n", col = colvec, pch = 15,cex=1.5) # add legend
+
+
+
+```
+.    
+  
+Alternatively, if you want you can use the `ordiellipse` function to form ellipse (that represent SD) around the centroid of each group.  
+
+```{r message=FALSE, warning=FALSE}
+
+ordiplot(ord, type = "n",main = paste("stress=",round(ord$stress,3)))# create the plot
+orditorp(ord, label = T, display = "sites", col = colvec[my_data$Year_season],pch = 16)# add scores and color by sites
+ordiellipse(ord, groups = my_data$Year_season,kind = "sd", draw = "polygon",alpha = 0.35,label=F ,lty = 1,col = colvec)# add ellipse
+legend("bottomright", legend = levels(my_data$Year_season), bty = "n", col = colvec, pch = 15,cex=1.5)# add legend
+
+```
+
+
+### 2. nMDS statistical analyses
+
+#### Choose environmental variables
+
+nMDS by itself does not test environmental effects!
+
+`envfit()` is a  function that allows you to determine the relative contribution of environmental variables to the separation of your communities along ordination axes. its parallel to model selection process. 
+
+We will test the effects of the environmental factors by sub-setting the original data:
+
+```{r}
+env_columns <- my_data %>% 
+  select(Year_season,Site ,Surface_Area,Max_depth,coral_cover,Knoll,Observer)
+
+env_columns$Knoll<-as.factor(env_columns$Knoll)
+```
+
+
+```{r warning=FALSE, fig.height = 10, fig.width = 10, fig.align = "center"}
+
+output_env <- envfit(ord, env_columns, permu = 100,na.rm = T)
+output_env
+
+```
+
+
+We will only focus on the Vectors and Goodness of Fit parts of the output. Some of you don't know statistics yet - if `Pr(>r)` is less than 0.05 than the effect is significant. If not, than it's not significant. In our example, all variables except `knoll` are significant.  
+
+This analyses is useful in cases were we have *many* environmental variables and you need your variables carefully. 
+
+
+#### Adonis
+
+Assessing differences in community composition is done with *per*mutational *M*ultivariate *A*nalysis of *V*ariance, or *perMANOVA*. These tests are done on distances, meaning that they assess the differences between communities based on dissimilarity. With perMANOVA, the null hypothesis is that the centroids of your groups (in ordination space as defined by the dissimilarity measure you’ve chosen) are equivalent for all groups. In other words, you are asking if, following some measure of (dis)similarity, the community composition of sites between groups is the same.
+
+This explanation is taken from the following website and contain a lot of useful information! 
+https://rpubs.com/an-bui/vegan-cheat-sheet
+
+After we decided what environmental variables we want to use we can test their contribution using `adonis2` function. 
+
+
+if I want to know if fish communities significantly changed along the surveys I can ask it that way:
+
+```{r}
+adon.results <- adonis2(nmds_data ~ Year_season, 
+                        data = my_data,
+                        method="bray",
+                        perm=999,
+                        na.action =na.omit)
+
+adon.results
+
+
+```
+
+the answer is Yes - Fish communities differ by year_season.  
+
+if we want to know which survey were significantly different from one-another we can use post-hoc test and apply pair-wise comparison between the diffrent years.  
+
+```{r}
+
+pairwise<-betadisper(nmds_data, # the distance matrix
+                     my_data$Year_season) # the groups
+
+par(mar=c(5,15,4,1))
+plot(TukeyHSD(pairwise),las=2)
+
+```
+
+#### Simper
+
+The simper functions performs pairwise comparisons of groups (i.e, `Year_season`) and finds the contribution of each species to the average between-group Bray-Curtis dissimilarity.
+
+**meaning** - which species contributed to the differences found between surveys.
+
+
+```{r, results='hide'}
+simper_output<-simper(helg_log_trans_data, #my community data (transformed)
+                      group = my_data$Year_season) # my group
+
+summary(simper_output)
+```
+
+
+
+
+
