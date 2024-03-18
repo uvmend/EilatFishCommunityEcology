@@ -1,0 +1,812 @@
+---
+title: "Quantifying Diversity"
+author: "TG"
+date: "2023-01-21"
+output: 
+  html_document: 
+    toc: yes
+    toc_float:
+      collapsed: no
+    theme: cerulean
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Before we begin
+
+Think of this script, and all the others in this course, as a package of dried ramen:
+
+![](dried-noodles.jpg){width="250px"}
+
+You don't need to understand how to replicate the package content. Instead, focus on adding *your* water and suitable flavours and toppings: what are the variables and categories you want to compare, what analyses are relevant to you, etc.
+
+# Overview
+
+This markdown file is designed to help you implement the material covered in today's class on your data. As always, you should run the relevant code into a new `.R` file for your analyses.
+
+From this exercise onward, we will make use of a popular Community Ecology package called `vegan` - so make sure to download it first using the `install.packages` function. Once you do, you can run the first lines of code which load all the packages we will use today.
+
+```{r message=FALSE, warning=FALSE}
+library(vegan)
+library(tidyverse)
+library(plotrix)
+library(betapart)
+```
+
+Once loaded, we continue by importing the dataset
+
+```{r message=FALSE}
+my_data <- read_csv(file = "fish_wide.csv") #change to your file directory
+
+my_data$...1<-NULL
+
+my_data$Year_season <- factor(my_data$Year_season,levels = c("2018 Fall",
+                                         "2020 Spring",
+                                         "2020 Fall",
+                                         "2021 Spring"),ordered = T)
+
+```
+
+We begin by first using just the `species matrix` portion of our data - that is, a subset which only includes the species columns. We will set a variable which indicates which column is the first species column:
+
+```{r}
+first_species <- 13
+```
+
+We can now subset our data to create the species matrix dataframe, which we will call `sp_matrix`:
+
+```{r}
+sp_matrix <- my_data[,first_species:ncol(my_data)]
+```
+
+# Diversity Profile - Hill Numbers
+
+![](Quantifying%20diversity\diversity%20slide.png)
+
+We will begin by calculating Hill number values for each site. We will use the `renyi` function. Type `?renyi` to see the help file for the function.
+
+The important arguments are:\
+x = data\
+scales = desired q values\
+hill = whether to calculate Hill numbers or not (T/F)
+
+Let's run the function on our species matrix:
+
+```{r}
+renyi_profile <- renyi(sp_matrix,  
+                       scales = c(0, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 2, 4, 8, 16, 32, 64, Inf),
+                       hill = T)
+
+
+  
+```
+
+Now let's look what we got:
+
+```{r}
+head(renyi_profile)
+```
+
+```{r}
+meta_data <- my_data[,1:10] # columns i want to keep from my data
+
+renyi_df<-bind_cols(meta_data,renyi_profile)
+my_data[11:25]
+```
+
+```{r}
+
+renyi_df<-gather(renyi_df,"Q","Value",11:25)
+
+renyi_df<-renyi_df %>% arrange(Site,Year_season,Knoll,survey_id)
+
+renyi_df$Q <- as.numeric(renyi_df$Q)
+
+```
+
+```{r}
+
+
+ggplot( data = renyi_df ) +
+  aes(x = Q, y = Value, group = survey_id , color = Site)+
+  geom_line() +
+  geom_point()+
+  scale_x_continuous(limits = c(0,64))
+
+
+
+renyi_df %>%
+  filter(Site == "Caves") %>% 
+ggplot() +
+  aes(x = Q, y = Value, group = survey_id , color = Year_season)+
+  geom_line() +
+  geom_point()+
+  scale_x_continuous(limits = c(0,64))
+
+```
+
+Don't be intimidated by all these lines. What you will see is, for each site, the diversity index for the range of values you have defined in the argument 'scales' in the 'renyi' function.
+
+When the value is 0 you will see the species richness, when it is 1 you will get the Shannon diversity index.
+
+Sometimes, you may wish to change your analysis scale and select a more broad grain. Here, we will demonstrate how we can examine the diversity profile of each `Year_season` and for each `Site` and `Year_season` together.
+
+> Note - the unit you use to group depend on the question you want to ask. we can use diffrent grouping to compare and ask diffrent questions on the same data.
+
+```{r}
+
+group_year_data <- my_data %>% 
+  select(Year_season,13:237) %>% 
+  group_by(Year_season) %>% # use this unit for analyses
+  summarise(across(.fns = sum),.groups = "keep") #summarize all other values by summing all the rows in each group.
+
+
+
+```
+
+The result is a much shorter dataset, where each row is the sum abundance of each species in the sampling event (Year_month).
+
+```{r}
+
+group_year_data
+
+```
+
+Now, we will repeat the process using `group_data`. I also changed the limits of the x axis to only show values between 0 and 3. You can play with different x axis values by changing the values in the `limits` argument in the `scale_x_continuous` function.
+
+```{r}
+renyi_profile_year_group <- renyi(group_year_data[,-1],
+                             scales = c(0, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 2, 4, 8, 16, 32, 64, Inf), 
+                             hill = T)
+
+renyi_df_year_group<-bind_cols(group_year_data[,1],renyi_profile_year_group)
+
+
+renyi_df_year_group<-gather(renyi_df_year_group,"Q","Value",2:16)
+
+renyi_df_year_group<-renyi_df_year_group %>% arrange(Year_season)
+
+renyi_df_year_group$Q <- as.numeric(renyi_df_year_group$Q)
+
+
+```
+
+Now we have the diversity profile for each group!
+
+lets plot the diversity for the different years:
+
+```{r}
+
+ggplot(renyi_df_year_group,aes(x=Q, y=Value, group = Year_season, color= Year_season))+
+  geom_line(size = 1.2)+
+  scale_x_continuous(limits = c(0,5))
+
+```
+
+We will now group our samples by summing the abundances in each `Site` and `Year_season`:
+
+```{r}
+group_data <- my_data %>% 
+  select(Year_season,Site,13:237) %>% 
+  group_by(Year_season,Site) %>% # use this unit for analyses
+  summarise(across(.fns = sum),.groups = "keep") #summarize all other values by summing all the rows in each group.
+```
+
+The result is a much shorter dataset, where each row is the sum abundance of each species in a group.
+
+```{r}
+group_data
+```
+
+Now, we will repeat the process using `group_data`. I also changed the limits of the x axis to only show values between 0 and 3. You can play with different x axis values by changing the values in the `limits` argument in the `scale_x_continuous` function.
+
+```{r}
+renyi_profile_group <- renyi(group_data[,-c(1:2)],
+                             scales = c(0, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 2, 4, 8, 16, 32, 64, Inf), 
+                             hill = T)
+
+renyi_df_group<-bind_cols(group_data[,1:2],renyi_profile_group)
+
+
+renyi_df_group<-gather(renyi_df_group,"Q","Value",3:17)
+
+renyi_df_group<-renyi_df_group %>% arrange(Site,Year_season)
+
+renyi_df_group$Q <- as.numeric(renyi_df_group$Q)
+
+
+```
+
+Now we have the diversity profile for each group!
+
+lets plot the diversity for each site at the diffrent years:
+
+```{r}
+
+ggplot(renyi_df_group,aes(x=Q, y=Value, group = Year_season, color= Year_season))+
+  geom_line()+
+  scale_x_continuous(limits = c(0,3))+facet_wrap(.~Site)
+
+```
+
+Alternatively we can compare the sites in the different years:
+
+```{r}
+  
+ggplot(renyi_df_group,aes(x=Q, y=Value, group = Site, color= Site))+
+  geom_line()+
+  scale_x_continuous(limits = c(0,3))+facet_wrap(.~Year_season)
+```
+
+# Beta Diversity
+
+before starting I'll just clean my environment so it will be less clutter and messy... this is the line that remove all object (except `my_data` and `first_species`) from my environment:
+
+```{r}
+rm(list=setdiff(ls(), c("my_data","first_species")))
+
+```
+
+![](Quantifying%20diversity\Decisions.png)
+
+There are several indices for quantifying the compositional dissimilarity between sites. Bray-Curtis Dissimilarity Index - uses abundance data. Sorenson (and Simpson), Jaccard - use incidence data.
+
+Each of the following analyses can be performed using either abundance or incidence and the relevant index.
+
+# Pairwise Beta Diversity
+
+Good for analyses of turnover. We will use both abundance and incidence data.
+
+![](Quantifying%20diversity\pairwise.png)
+
+For demonstrating the first part of the pairwise beta diversity analysis, we will use the Bray-Curtis index on our abundance data. We will use the `bray.part` function. Use `?bray.part` to understand how this index is calculated and how to use this function.
+
+For this exercise's purpose - we only need the third element in the list: `bray`.
+
+We will demonstrate the `bray.part` function on the Caves 2018 subset of our data. We will subset our data to the desired group and then drop the unwanted columns. Remember: we want to work with just the species matrix.
+
+```{r}
+caves_data <- my_data %>% filter(Site == "Caves",Year == "2018") # filter for example
+
+caves_sp_matrix <- caves_data[,first_species:length(caves_data)] # keep only the species data
+```
+
+Then we will run the function:
+
+```{r}
+
+bray_results <- bray.part(caves_sp_matrix)
+
+```
+
+As mentioned in the help page, the function returns a list with three dissimilarity matrices. We are interested in the third element.
+
+```{r}
+ bray_results[[3]] 
+
+```
+
+this is the values of the bray-curtis distance for the pair-wise comparisons possible in our data.
+
+lets check the mean and SE distance for the cave site (2018)
+
+```{r}
+
+mean(bray_results[[3]])
+
+std.error(bray_results[[3]])
+
+
+```
+
+**Reminder** - Bray curtis is an dissimilarity index, thus 0 means similar species composition while 1 mean no similar species - maximum dissimilarity.
+
+We want to get this dissimilarity index for all of our groups, so we could plot it and compare it among them.In this case, compare the different sampling events - the`Year_month` column. There are several methods to do so, each requires me to probably teach a new subject in R (functions, working with lists, nested data frames etc.).
+
+here we will use `for` loops to repeat the same set of functions we used in the `Caves` example and apply it to each site. The loops design is quite similar to the one you saw in `R intro part 3`.
+
+```{r}
+bray_scores<-list() # create an empty list to store my newly created data
+
+for (i in unique(my_data$Year_season)){
+  
+year_data <- my_data %>% filter(Year_season == i) # keep only the observation of sample i
+
+year_sp_matrix <- year_data[,first_species:length(year_data)] # create species matrix
+
+year_bray_part <- bray.part(year_sp_matrix) # apply the function that calculate bray Curtis distances 
+year_bray_results<- year_bray_part[[3]] # keep only the bray Curtis results
+
+year_bray_results<-as.numeric(year_bray_results) # convert to numeric object
+
+mean_bray <- mean(year_bray_results) # calculate the mean bray curtis distance
+se_bray <- std.error(year_bray_results)# calculate SE
+Sample <- i # argument with the the name of the site
+
+bray_data <- data.frame(Sample,mean_bray,se_bray) # create data frame that save those variables 
+
+bray_scores[[i]]<-bray_data # save it in my list
+  
+}
+
+bray_scores<-bind_rows(bray_scores) # convert from list to data frame
+
+
+# get the years in the right order:
+
+bray_scores$Sample <- factor(bray_scores$Sample,levels = c("2018 Fall",
+                                         "2020 Spring",
+                                         "2020 Fall",
+                                         "2021 Spring"),ordered = T)
+
+# lets plot:
+
+ggplot(bray_scores,aes(x = Sample,
+                       y = mean_bray,
+                       color = Sample)) +
+  geom_point(size = 4)+
+  geom_errorbar(aes(ymin= mean_bray - se_bray,
+                    ymax= mean_bray + se_bray),size =1.2,width = 0.2)
+  
+
+
+```
+
+This graph should give you an idea about which sample year was more dissimilar according to this index.
+
+> again, the plot ypu create should be driven from the question you want to ask! if my main focus was comparing the sites I'll use the following loop:
+
+```{r}
+bray_scores_site<-list() # create an empty list to store my newly created data
+
+for (i in unique(my_data$Site)){
+  
+site_data <- my_data %>% filter(Site == i) # keep only the observation of sample i
+
+site_sp_matrix <- site_data[,first_species:length(site_data)] # create species matrix
+
+site_bray_part <- bray.part(site_sp_matrix) # apply the function that calculate bray Curtis distances 
+site_bray_results<- site_bray_part[[3]] # keep only the bray Curtis results
+
+site_bray_results<-as.numeric(site_bray_results) # convert to numeric object
+
+mean_bray <- mean(site_bray_results)
+se_bray <- std.error(site_bray_results)
+Site <- i
+
+bray_data_site <- data.frame(Site,mean_bray,se_bray)
+
+bray_scores_site[[i]]<-bray_data_site
+  
+}
+
+bray_scores_site<-bind_rows(bray_scores_site)
+
+ggplot(bray_scores_site,aes(x = Site,
+                       y = mean_bray,
+                       color = Site)) +
+  geom_point(size = 4)+
+  geom_errorbar(aes(ymin= mean_bray - se_bray,
+                    ymax= mean_bray + se_bray),size =1.2,width = 0.2)
+  
+
+```
+
+> In my sampling design, we sampled the same knolls over the years. Therefor if I want I can see which knolls were more dissimilar over the years
+
+lets take the Caves site as example and calculate the dissimilarity of each knoll at among the 4 survey dates.
+
+```{r}
+
+one_site<-my_data %>% filter(Site == 'Caves')
+
+bray_scores_knoll<-list() # create an empty list to store my newly created data
+
+for (i in unique(one_site$Knoll)){
+  
+knoll_data <- one_site %>% filter(Knoll == i) # keep only the observation of sample i
+
+knoll_sp_matrix <- knoll_data[,first_species:length(knoll_data)] # create species matrix
+
+knoll_bray_part <- bray.part(knoll_sp_matrix) # apply the function that calculate bray Curtis distances 
+knoll_bray_results<- knoll_bray_part[[3]] # keep only the bray Curtis results
+
+knoll_bray_results<-as.numeric(knoll_bray_results) # convert to numeric object
+
+mean_bray <- mean(knoll_bray_results)
+se_bray <- std.error(knoll_bray_results)
+
+Knoll <- i
+
+bray_data_knoll <- data.frame(Knoll,mean_bray,se_bray)
+
+bray_scores_knoll[[i]]<-bray_data_knoll
+  
+}
+
+bray_scores_knoll<-bind_rows(bray_scores_knoll)
+
+bray_scores_knoll$Knoll<-as.factor(bray_scores_knoll$Knoll)
+
+
+ggplot(bray_scores_knoll,aes(x = Knoll,
+                       y = mean_bray,
+                       color = Knoll)) +
+  geom_point(size = 4)+
+  geom_errorbar(aes(ymin= mean_bray - se_bray,
+                    ymax= mean_bray + se_bray),size =1.2,width = 0.2)
+  
+
+```
+
+#### Data transformations:
+
+![](Quantifying%20diversity\data%20transformations.png)
+
+Lets use log2 transformation on our abundance data and than use the Bray-Curtis dissimilarity on the transformed data.
+
+for this example I'll take the `caves_sp_matrix` and show you how to use the `decostand` function to log transform your data:
+
+```{r}
+
+caves_sp_matrix_log<-decostand(caves_sp_matrix, method = 'log',logbase = 2)
+caves_sp_matrix_log<-decostand(caves_sp_matrix, method = 'log',logbase = 10)
+
+```
+
+cool!
+
+now lets compare beta diversity in each `Year_season` using Bray-Curtis index but this time use it in log transformed data that give less weight to the common species
+
+```{r}
+bray_scores_log_10<-list() # create an empty list to store my newly created data
+
+for (i in unique(my_data$Year_season)){
+  
+year_data <- my_data %>% filter(Year_season == i) # keep only the observation of sample i
+
+year_sp_matrix <- year_data[,first_species:length(year_data)] # create species matrix
+
+year_sp_matrix_log<-decostand(year_sp_matrix,method = 'log',logbase = 10)
+
+year_bray_part_log <- bray.part(year_sp_matrix_log) # apply the function that calculate bray Curtis distances 
+
+year_bray_results_log<- year_bray_part_log[[3]] # keep only the bray Curtis results
+
+year_bray_results_log<-as.numeric(year_bray_results_log) # convert to numeric object
+
+mean_bray <- mean(year_bray_results_log) # calculate the mean bray curtis distance
+se_bray <- std.error(year_bray_results_log)# calculate SE
+Sample <- i # argument with the the name of the site
+
+bray_data_log <- data.frame(Sample,mean_bray,se_bray) # create data frame that save those variables 
+
+bray_scores_log_10[[i]]<-bray_data_log # save it in my list
+  
+}
+
+bray_scores_log_10<-bind_rows(bray_scores_log_10) # convert from list to data frame
+
+# get the Years order right
+
+bray_scores_log_10$Sample <- factor(bray_scores_log_10$Sample,levels = c("2018 Fall",
+                                         "2020 Spring",
+                                         "2020 Fall",
+                                         "2021 Spring"),ordered = T)
+
+# lets plot:
+
+ggplot(bray_scores_log_10,aes(x = Sample,
+                       y = mean_bray,
+                       color = Sample)) +
+  geom_point(size = 4)+
+  geom_errorbar(aes(ymin= mean_bray - se_bray,
+                    ymax= mean_bray + se_bray),size =1.2,width = 0.2)+
+  ggtitle("log 10 - data transformation")
+
+# and compare to the results without transformation:
+
+ggplot(bray_scores,aes(x = Sample,
+                       y = mean_bray,
+                       color = Sample)) +
+  geom_point(size = 4)+
+  geom_errorbar(aes(ymin= mean_bray - se_bray,
+                    ymax= mean_bray + se_bray),size =1.2,width = 0.2)+
+  ggtitle("No data transformation")
+  
+```
+
+> What dose those differences tells us about the communities?
+
+```{r}
+rm(list=setdiff(ls(), c("my_data","first_species","caves_sp_matrix")))
+```
+
+#### Different Components of Beta Diversity
+
+Now we move to calculating different aspects of beta diversity. We will use present absent data to quantify the nestedness and turnover components.
+
+![](Quantifying%20diversity\turnover.png)
+
+First, we use `replace` to turn our data into incidence data. We will use the Caves species matrix (from 2018) like before to demonstrate:
+
+```{r}
+caves_incidence <- caves_sp_matrix %>% 
+  replace(caves_sp_matrix > 0, 1)
+```
+
+Now our data should contain only 1s and 0s:
+
+```{r}
+caves_incidence[1:10,1:10]
+```
+
+We will use the `beta.pair` function. Let's see what it does using `?beta.pair`.
+
+For this exercise, we will use the default `index.family = "sorensen"`. For incidence data you could also use `Jaccard`.
+
+Ok. So let's apply it on our subset:
+
+```{r}
+caves_beta_pairs <- beta.pair(caves_incidence)
+
+```
+
+We get 3 distance matrixes in one list:
+
+1.  The distance which is due to species turnover between sites.
+2.  The distance which is due to species nestedness between sites.
+3.  The total distance (nestedness + turnonver).
+
+lets convert the list we dot to orgenized data frame:
+
+```{r}
+
+caves_beta_pairs <- bind_cols(caves_beta_pairs) # convert from list to data frame
+
+caves_beta_pairs$Site <- "Caves" # add the site name to the data 
+
+caves_beta_pairs<- gather(caves_beta_pairs,"component","beta",1:3) # convert to long format
+
+caves_beta_pairs <- caves_beta_pairs %>%
+  filter(component != "beta.sor") # beta.sor is the sum of beta.sne and beta.sim, we don't need it for the plot 
+  
+ggplot(caves_beta_pairs)+
+  aes(x=Site,y=beta,fill=component)+
+  stat_summary(geom = "bar",fun.data = mean_se)+
+  stat_summary(geom = "errorbar",fun.data = mean_se,width = 0.3)+
+  ylab(expression(paste(beta,"-diversity")))
+
+
+
+```
+
+We get a bar graph where the bar total is the total beta diversity, and each component is a different color. This shows you the contribution of the two components.
+
+We will repeat this process for all of our Site using `for` loop.
+
+```{r}
+
+beta_pair_data<-list()
+
+for (i in unique(my_data$Site)){
+  
+  one_site <- my_data %>% filter(Site == i)
+  one_site_sp_matrix <- one_site[,first_species:length(one_site)] # keep only species data  
+  
+  one_site_incidence <- one_site_sp_matrix %>%
+    replace(one_site_sp_matrix > 0, 1) # convert to presence-absence data
+  
+  one_site_beta_pairs <- beta.pair(one_site_incidence) # calculate the beta values
+  
+  one_site_beta_pairs <- bind_cols(one_site_beta_pairs) # tie the list element toghter
+
+  one_site_beta_pairs$Site <- rep(i) # add site
+  
+  one_site_beta_pairs <- as.data.frame(one_site_beta_pairs) # convert to data frame 
+  
+  one_site_beta_pairs$beta.sim<-as.numeric(one_site_beta_pairs$beta.sim) # change from distance object to numeric
+  one_site_beta_pairs$beta.sne<-as.numeric(one_site_beta_pairs$beta.sne)
+  one_site_beta_pairs$beta.sor<-as.numeric(one_site_beta_pairs$beta.sor)
+ 
+   beta_pair_data[[i]] <- one_site_beta_pairs # save to list
+  
+}
+
+beta_pair_data<-bind_rows(beta_pair_data) # convert list to data frame
+
+beta_pair_data<- gather(beta_pair_data,"component","beta",1:3) # long format
+
+beta_pair_data <- beta_pair_data %>%
+  filter(component != "beta.sor")  # filter beta.sor (sum of sim and sne) 
+  
+ggplot(beta_pair_data)+
+  aes(x=Site,y=beta,fill=component)+
+  stat_summary(geom = "bar",fun.data = mean_se)+
+  stat_summary(geom = "errorbar",fun.data = mean_se,width = 0.3)+
+  ylab(expression(paste(beta,"-diversity")))
+
+```
+
+Note: we performed a pair-wise analysis, which means the above plot describes the mean value and SE of all the different pairs of knolls (and samples) witin each site.
+
+# Multi-site Dissimilarity
+
+![](Quantifying%20diversity\multisite.png)
+
+We will now calculate the multi-site dissimilarity, which is good for analyses of variation.
+
+We will only use incidence data for this exercise, using the `beta.multi` function.
+
+This is the output for the Cave subset:
+
+```{r}
+
+beta.multi(caves_incidence)
+
+
+```
+
+Just one value for each component. This is because the comparison is using all the sites for one metric, unlike the pairwise comparisons.
+
+**IMPORTANT NOTE: unlike the pairwise comparisons multi-site comparisons are sensitive to sample size! in order for the analyses to work properly you need to have equal sample in each group you want to compare! If you don't have equal sample size in each category, continue to the next section!**
+
+lets see if I have equal sampling effort:
+
+```{r}
+summary_table<-my_data %>% group_by(Site,Year_season) %>% summarise("knolls"= n_distinct(Knoll))
+```
+
+**Nope!**
+
+for the sake of the first example I will compare 3 years of samples for the Caves site where the number of sampled knolls was equal (other than being a good example its not a very interesting comparison...)
+
+lets subset the desired data and convert to incident data:
+
+```{r}
+
+same_effort<-my_data %>% filter(Site =="Caves",Year_season!= "2020 Spring") 
+
+same_effort[13:ncol(same_effort)] <-replace(same_effort[13:ncol(same_effort)],
+                                            same_effort[13:ncol(same_effort)] > 0,
+                                            1) 
+
+```
+
+now, as we did before, we will use `for` loop to apply the `beta.multi` function to each year of sampling:
+
+```{r}
+same_effort_beta<-list()
+
+
+for (i in same_effort$Year_season) {
+  
+  one_year <- same_effort %>% filter(Year_season == i)
+  
+  one_year_sp_matrix <- one_year[,first_species:ncol(one_year)]
+  
+  beta_multi <- as.data.frame(beta.multi(one_year_sp_matrix))
+  
+  beta_multi$Year_season<-i
+  
+  same_effort_beta[[i]]<-beta_multi
+  
+  
+}
+
+
+
+same_effort_beta<-bind_rows(same_effort_beta)
+
+same_effort_beta<- gather(same_effort_beta,"component","beta",1:3)
+
+same_effort_beta <- same_effort_beta %>%
+  filter(component != "beta.SOR") 
+
+ggplot(same_effort_beta)+
+  aes(x=Year_season,y=beta,fill=component)+
+  geom_bar(stat="identity",position = position_stack())+
+  ylab(expression(paste(beta,"-diversity")))
+
+```
+
+As you can see, the result is different if we take the multi-site path instead of the pairwise path.
+
+### Different Sample Size and Multi-Site Dissimilarity
+
+Multi-site comparisons are sensitive to sample size differences. If you have a different number of sites then the above method will not work for you and you need to use `beta.sample`.
+
+It is similar, but you specify the number of sites you wish to run this function on. You also specify how many times you want to run it. the function will sample randomly `X` sites, calculate the beta distances for the chosen sites and than re-chose `X` sites and calculate the beta distances for the new sub-sample. the function will repeat this process according to the samples number you define:
+
+`beta.sample(data, =  what data to use               sites,  =  how many sites to randomly samples               samples) = how many random repetitions`
+
+Let's keep the cave site exmple and see see how many knolls we sampled in each year:
+
+```{r}
+summary_table %>% filter(Site =="Caves")
+```
+
+In this example, the Caves site in Spring 2020 has the least knolls sampled. We will assign it to a `least_sampled` variable:
+
+```{r}
+least_sampled <- min(summary_table$knolls[summary_table$Site=='Caves']) 
+
+least_sampled
+```
+
+```{r message=FALSE, results='hide'}
+
+
+caves_beta_sample <- beta.sample(caves_incidence, 
+            sites= least_sampled,  # how many knolls to randomly sample
+            samples = 10) # how many repetitions of (14) knolls to do 
+
+
+caves_beta_sample <- beta.sample(caves_incidence,
+            sites= least_sampled, 
+            samples = 100)
+
+
+```
+
+```{r}
+caves_beta_sample$mean.values 
+```
+
+after we understood how the function is working lets calculate the multi-site beta diversity of all the years for the caves site.
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+
+
+caves <-my_data %>% filter(Site =="Caves") # only cave
+
+caves[13:ncol(caves)] <-replace(caves[13:ncol(caves)],
+                                            caves[13:ncol(caves)] > 0,
+                                            1) # incident data
+
+caves_all_years<-list() # empty list
+
+for (i in unique(caves$Year_season)) { # loop
+  
+  one_year <-  caves %>% filter(Year_season == i)
+  
+  one_year_sp_matrix <- one_year[,first_species:ncol(one_year)]
+  
+  caves_beta_sample <- beta.sample(one_year_sp_matrix,
+            sites= least_sampled, 
+            samples = 100)
+  
+ 
+  caves_beta_sample_data <- data.frame(mean = caves_beta_sample[["mean.values"]],
+                                    se = caves_beta_sample[["sd.values"]])
+
+  caves_beta_sample_data <-rownames_to_column(caves_beta_sample_data,'Component') 
+
+  caves_beta_sample_data$Year_season <- i
+  
+ caves_all_years[[i]]<-caves_beta_sample_data
+  
+}
+
+
+caves_all_years<-bind_rows(caves_all_years)
+
+
+```
+
+```{r}
+caves_all_years<-caves_all_years %>% filter(Component != "beta.SOR")
+
+ggplot(caves_all_years)+
+  aes(x=Year_season,y=mean,fill=Component)+
+  geom_bar(stat="identity",position = position_stack())+
+  ylab(expression(paste(beta,"-diversity")))
+
+
+
+
+```
+
+Good luck using these on your own data!

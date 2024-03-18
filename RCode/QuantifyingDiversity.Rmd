@@ -1,0 +1,99 @@
+---
+title: "Quantifying Diversity"
+author: "Yuval Mendelson"
+date: "11-03-2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this notebook I would try to quantify the diversity of the fish surveys in the project.
+
+```{r}
+library(vegan)
+library(tidyverse)
+library(plotrix)
+library(betapart)
+```
+
+Load the data:
+
+```{r}
+orig_df <- readRDS("./EilatFishCommunityEcology/Data/wide_fish_eilat.rds")
+# make data table into data frame:
+orig_df <- orig_df %>% ungroup()
+orig_df <- as.data.frame(orig_df)
+
+
+first_species_col = 12
+
+zero_trans_removed <- apply(sp_matrix, 1, function(row) sum(as.numeric(row[first_species_col:length(row)])) != 0)
+no_zeros_trans_df <- orig_df[zero_trans_removed,]
+head(no_zeros_trans_df)
+```
+
+lets make the species matrix:
+
+```{r}
+sp_matrix <- no_zeros_trans_df[,first_species_col:length(orig_df)]
+
+head(sp_matrix)
+```
+
+### Diversity Profiling - Hills numbers
+
+first, I would like to calculate the Hills numbers for each site in the data.
+
+```{r}
+renyi_profile <- renyi(
+  sp_matrix,
+  scales = c(0, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1, 2, 4, 8, 16, 32, 64,            Inf),
+  hill = T
+)
+
+#renyi_profile[is.na(renyi_profile)] <- 0
+head(renyi_profile)
+```
+
+now we want to save some of the metadata columns from the original data:
+
+```{r}
+metadata_df <- no_zeros_trans_df[1:first_species_col-1]
+renyi_df <- bind_cols(metadata_df, renyi_profile)
+```
+
+now I want to create the plot:
+
+```{r}
+renyi_df <- gather(renyi_df, "Q", "Value", (first_species_col-1):length(renyi_df))
+renyi_df$Q <- as.numeric(renyi_df$Q)
+
+ggplot( data = renyi_df ) +
+  aes(x = Q, y = Value, group = survey_id , color = Site)+
+  geom_line() +
+  geom_point()+
+  scale_x_continuous(limits = c(0,64))
+```
+
+#### Site specific:
+
+```{r}
+for (site in unique(renyi_df$Site))
+{
+  p <- renyi_df %>% 
+    filter(Site == site) %>% 
+    ggplot() +
+    aes(x = Q, y = Value, group = survey_id , color = Year)+
+    geom_line() +
+    geom_point()+
+    scale_x_continuous(limits = c(0,64)) +
+    ggtitle(paste("Site - ", site))
+  print(p)
+}
+```
+
+## TODO: make more plots based on season-year and site specific
+
+## Beta Diversity
