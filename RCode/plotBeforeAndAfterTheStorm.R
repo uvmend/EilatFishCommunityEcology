@@ -1,7 +1,7 @@
 pacman::p_load(leaflet)
 
 # show locations
-rec_df <- read.csv("./EilatFishCommunityEcology/Data/all stations from EPIC - Yuval.csv")
+rec_df <- read.csv("./Data/all stations from EPIC - Yuval.csv")
 
 leaflet() %>% 
   addTiles() %>% 
