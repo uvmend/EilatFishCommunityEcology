@@ -2,7 +2,7 @@ pacman::p_load(tidyverse)
 pacman::p_load(lubridate)
 
 ## load the data:
-df = read.csv("./EilatFishCommunityEcology/Data/EilatFishSurveysOnlyTransNoJuv.csv")
+df = read.csv("./Data/EilatFishSurveysOnlyTransNoJuv.csv")
 
 # remove unconfidence observations:
 df <- df %>% filter(Confidence < 1)
@@ -64,6 +64,6 @@ df_wide <- df %>%
   spread(Species, Amount, fill = 0)
 
 # Save:
-saveRDS(df_wide, "./EilatFishCommunityEcology/Data/wide_fish_eilat.rds")
+saveRDS(df_wide, "./Data/wide_fish_eilat.rds")
 
 
