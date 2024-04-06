@@ -66,4 +66,5 @@ df_wide <- df %>%
 # Save:
 saveRDS(df_wide, "./Data/wide_fish_eilat.rds")
 
+rm(df, df_wide)
 
