@@ -1,0 +1,66 @@
+---
+title: "QuantifyingDiversity"
+author: "Yuval Mendelson"
+date: "2024-03-05"
+output: html_document
+---
+
+# Overview
+
+In this markdown I would like to do the quantified diversity of the project.
+Diversity if the number of species in an area ans their abundance.
+first we need to load the needed libraries:
+```{r}
+library(vegan)
+library(tidyverse)
+library(plotrix)
+library(betapart)
+```
+
+now we need to load the data:
+```{r}
+m_df <- readRDS("wide_fish_eilat.rds")
+first_species_col = 12
+sp_matrix <- m_df[,first_species_col:ncol(m_df)]
+```
+
+## Diversity Profile - Hill Numbers
+```{r}
+renyi_profile <- renyi(sp_matrix, 
+                       scales = c(0, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 2.0, 
+                                  4.0, 8.0, 16.0, 32.0, 64.0, Inf),
+                       hill=T)
+```
+now we would like to add to the reyni matrix some meta data:
+```{r}
+meta_data <- m_df[,1:10]
+renyi_df <- bind_cols(meta_data, renyi_profile)
+```
+now we would like to arrange the data frame a bit:
+```{r}
+renyi_df <- gather(renyi_df, "Q", "value", 11:25)
+#renyi_df <- renyi_df %>% arrange(Site_name, Year)
+renyi_df$Q <- as.numeric(renyi_df$Q)
+
+renyi_df %>% 
+  filter(Site_name == "Caves") %>% 
+  ggplot() +
+  aes(x = Q, y = value, group = trans_ID, color = Site_name) + 
+  geom_line() +
+  geom_point() 
+```
+now for each site seperatly:
+```{r}
+for (val in unique(renyi_df$Site_name))
+{
+  p <- renyi_df %>% 
+    filter(Site_name == val) %>% 
+    ggplot() +
+    aes(x = Q, y = value, group = trans_ID) +
+    geom_line() +
+    geom_point() +
+    ggtitle(paste("Hills number of ", val))
+  print(p)
+}
+```
+

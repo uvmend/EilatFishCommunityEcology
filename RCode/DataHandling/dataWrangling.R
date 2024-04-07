@@ -5,7 +5,7 @@ pacman::p_load(lubridate)
 df = read.csv("./Data/EilatFishSurveysOnlyTransNoJuv.csv")
 
 # remove unconfidence observations:
-df <- df %>% filter(Confidence < 1)
+df <- df %>% filter(Confidence < 2)
 
 # get only relevant locations:
 df$Site_name <- replace(df$Site_name,
@@ -60,11 +60,13 @@ df$Length <- as.numeric(df$Length)
 # spraed df:
 df_wide <- df %>%
   group_by(across(Site_name:Species)) %>% 
-  summarise(Amount = sum(Amount)) %>% 
+  summarise(Amount = sum(Amount), C = first(C), 
+            R = first(R), G = first(G), S = first(S), 
+            SG = first(SG), A = first(A), B = first(B)) %>%  # coverage
   spread(Species, Amount, fill = 0)
 
 # Save:
 saveRDS(df_wide, "./Data/wide_fish_eilat.rds")
 
-rm(df, df_wide)
-
+rm(df, df_wide, col, cols_to_remove)
+gc()

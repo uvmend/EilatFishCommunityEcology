@@ -1,0 +1,49 @@
+---
+title: "QuantifyingRichness"
+author: "Yuval Mendelson"
+date: "2024-03-05"
+output: html_document
+---
+
+In this part I would like to do the quantifying richness section of the project
+```{r}
+pacman::p_load(vegan)
+pacman::p_load(tidyverse)
+pacman::p_load(plotrix)
+pacman::p_load(rareNMtests)
+pacman::p_load(mobr)
+```
+
+First of all we would need to load the data:
+```{r}
+# load data:
+orig_df <- readRDS("./Data/wide_fish_eilat.rds")
+
+# make data table into data frame:
+orig_df <- orig_df %>% ungroup()
+orig_df <- as.data.frame(orig_df)
+
+first_species_col = 12
+```
+
+Now we would like to plot the average richness of the fish species over different 
+years. The reason for that might be to see if there is any change between years:
+```{r}
+df <- orig_df
+
+df %>% 
+  mutate(richness = rowSums(df[first_species_col:length(df)] > 0)) %>% 
+  ggplot() +
+  aes(x = year, y = richness) +
+  stat_summary(geom = "bar", fun.data = mean_se, fill="lightblue") +
+  stat_summary(geom = "errorbar", fun.data = mean_se, position = "dodge", width = 0.3) +
+  xlab("Year") +
+  ylab("Mean Richness") +
+  ggtitle("Yearly Mean Richness")
+
+```
+
+
+
+
+

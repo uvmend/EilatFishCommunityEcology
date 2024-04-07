@@ -5,7 +5,7 @@ pacman::p_load(rareNMtests)
 pacman::p_load(mobr)
 
 # load data:
-orig_df <- readRDS("./EilatFishCommunityEcology/Data/wide_fish_eilat.rds")
+orig_df <- readRDS("./Data/wide_fish_eilat.rds")
 
 # make data table into data frame:
 orig_df <- orig_df %>% ungroup()
@@ -15,7 +15,7 @@ first_species_col = 12
 
 df <- orig_df
 #plot richness based on year:
-yearly_reachness_plot <- df %>% 
+df %>% 
   mutate(richness = rowSums(df[first_species_col:length(df)] > 0)) %>% 
   ggplot() +
   aes(x = year, y = richness) +
@@ -25,13 +25,8 @@ yearly_reachness_plot <- df %>%
   ylab("Mean Richness") +
   ggtitle("Yearly Mean Richness")
 
-yearly_reachness_plot
-
 #plot richness based on year:
-MonthsNames <- c("january", "february", "march", "april", "may", "june", "july",     
-                 "august", "september", "october", "november", "december")
-month_df <- df %>% arrange(month, MonthsNames)
-monthly_reachness_plot <- df %>% 
+df %>% 
   mutate(richness = rowSums(df[first_species_col:length(df)] > 0)) %>% 
   ggplot() +
   aes(x = month, y = richness) +
@@ -41,27 +36,20 @@ monthly_reachness_plot <- df %>%
   ylab("Mean Richness")+
   ggtitle("Monthly Mean Richness")
 
-monthly_reachness_plot
 
-## TODO: make the months in order
-df$month_number <- match(df$month, MonthsNames)
-# year month:
-df$year_month <- paste(df$year, df$month_number, sep = ".")
-monthly_reachness_plot <- df %>% 
+df$year_month <- paste(year(df$Date), month(df$Date, label=TRUE), sep = "-")
+df %>% 
   mutate(richness = rowSums(df[first_species_col:length(df)] > 0)) %>% 
   ggplot() +
-  aes(x = year_month, y = richness) +
+  aes(x = year_month, y = richness, fill=year) +
   stat_summary(geom = "bar", fun.data = mean_se, fill="lightblue") +
   stat_summary(geom = "errorbar", fun.data = mean_se, position = "dodge", width = 0.3) +
-  xlab("Month") +
+  xlab("Date") +
   ylab("Mean Richness")+
-  ggtitle("Monthly Mean Richness")
-
-monthly_reachness_plot
+  ggtitle("Mean Richness by date")
 
 # create species matrix:
 sp_matrix <- orig_df[,first_species_col:length(orig_df)]
-?rarefy
 raremax <- 1#sp_matrix %>% rowSums() %>% min()
 
 sp_matrix %>% 
