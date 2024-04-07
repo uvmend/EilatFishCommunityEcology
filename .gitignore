@@ -6,3 +6,5 @@
 .Rhistory
 *.png
 *.rds
+.RData
+.Rhistory
