@@ -8,3 +8,265 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+for start we would like to load some libraries:
+```{r}
+pacman::p_load(vegan)
+pacman::p_load(tidyverse)
+pacman::p_load(plotrix)
+pacman::p_load(rareNMtests)
+pacman::p_load(mobr)
+source('./RCode/EcologicalMetrics/QuantifyRichness.R')
+source('./RCode/plotGeneral.R')
+```
+
+Start by loading the data:
+```{r}
+orig_df <- readRDS("./Data/wide_fish_eilat.rds")
+orig_df <- orig_df %>% ungroup()
+orig_df <- as.data.frame(orig_df)
+
+first_species_col = 20
+df <- orig_df
+df$year_season <- paste(df$year, df$season, sep = "-")
+df <- df %>% relocate(year_season, .after = year)
+
+df %>% 
+  mutate(richness = rowSums(select(.,20:length(df))>0)) %>% 
+  ggplot() +
+  aes(x = year_season, y = richness, fill = season) +
+  stat_summary(geom = "bar", fun.data = mean_se, ) + 
+  stat_summary(geom = "errorbar", fun.data = mean_se, position = "dodge", 
+               width = 0.3) +
+  xlab("Year Month") +
+  xlab("Mean Richness") + 
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+#unique(df$year_month)
+```
+# Individual Based Rarefaction
+we will create the first plot again, only this time we would take into acount the sampling effort.
+
+now lets make the species matrix:
+```{r}
+sp_matrix <- df[,first_species_col:length(df)]
+```
+
+now we use rarefy function.
+```{r}
+rareMax <- sp_matrix %>% rowSums() %>% min()
+rareMax
+```
+Sometimes when we rarefy by sample, we may see an extremely low individual count. 
+Rarefying to a low number such as 3 isn’t really helpful. 
+Let’s observe how abundance varies in our dataset:
+```{r}
+sp_matrix %>% 
+  mutate(abundance = rowSums((.))) %>% 
+  ggplot() +
+  aes(x = abundance) +
+  geom_histogram() +
+  scale_x_log10()
+```
+We see that some trtansects have very low abundance, I would remove the samples 
+with less than 30 individuals (the number 30 is based on the tutorials)
+```{r}
+my_df_clean <- df %>% 
+  mutate(abundance = rowSums(df[first_species_col:length(df)])) %>% 
+  filter(abundance > 20) %>% 
+  mutate(abundance = NULL)
+
+sp_matrix <- my_df_clean[,first_species_col:length(my_df_clean)]
+```
+lets check that we indeed made the right change:
+```{r}
+rareMax <- sp_matrix %>% rowSums() %>% min()
+rareMax
+```
+
+Now we proceed with the rarefaction. We will see what is the species richness in each site when we sample randomly 31 individuals:
+
+```{r}
+rare_index_rareMax <- rarefy(x = sp_matrix, sample = rareMax)
+```
+
+We will now mutate our data by adding a rarefied_richness column, and plot a richness barplot again.
+
+```{r}
+rare_richness_plot <- my_df_clean %>% 
+  mutate(rarefied_richness = rare_index_rareMax) %>% 
+  ggplot() +
+  aes(x = year_season, y = rarefied_richness, fill = season) + 
+  stat_summary(geom = "bar", fun.data = mean_se) + 
+  stat_summary(geom = "errorbar", fun.data = mean_se, position = "dodge", width = 0.3) +
+  xlab("Year Month") +
+  xlab("Mean Richness") + 
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+
+rare_richness_plot
+```
+# Individual Based Rarefaction Curve
+## Transect Scale:
+
+```{r}
+group_df <- my_df_clean %>% 
+  select(year, first_species_col:ncol(my_df_clean)) %>% 
+  group_by(year) %>% 
+  summarize(across(.fns = sum))
+group_df$year <- sapply(group_df$year, function(val) {return(as.character((val)))})
+group_df
+```
+Generate lines:
+
+```{r}
+rare_individual <- calcIndividualBasedRarefactionCategory(group_df, 'year')
+p <- plotRarefactionCurves(rare_individual, "Individual Rarefication for All Transects")
+p
+
+```
+
+can it be that the reason for 2023 to look not that impacted is because of the correctness for cryptic species?
+I would try it again only with non-cryptic species:
+```{r}
+non_cryptic_group_df <- my_df_clean %>% 
+  filter(Trans_type == "T") %>% 
+  select(year, first_species_col:ncol(my_df_clean)) %>% 
+  group_by(year) %>% 
+  summarize(across(.fns = sum))
+
+non_cryptic_group_df$year <- sapply(non_cryptic_group_df$year, function(val) {return(as.character((val)))})
+non_cryptic_rare <- calcIndividualBasedRarefactionCategory(non_cryptic_group_df, 'year')
+p <- plotRarefactionCurves(non_cryptic_rare, "Individual Rarefication for Non Cryptic Spiecies")
+p
+```
+
+
+```{r}
+cryptic_group_df <- my_df_clean %>% 
+  filter(Trans_type == "C") %>% 
+  select(year, first_species_col:ncol(my_df_clean)) %>% 
+  group_by(year) %>% 
+  summarize(across(.fns = sum))
+
+cryptic_group_df$year <- sapply(cryptic_group_df$year, function(val) {return(as.character((val)))})
+cryptic_rare <- calcIndividualBasedRarefactionCategory(cryptic_group_df, 'year')
+p <- plotRarefactionCurves(cryptic_rare, "Individual Rarefication for Non Cryptic Spiecies")
+p
+```
+### Depth:
+```{r}
+depth_group_df <- my_df_clean %>% 
+  select(Depth, first_species_col:ncol(my_df_clean)) %>% 
+  group_by(Depth) %>% 
+  summarize(across(.fns = sum))
+
+# depth_group_df$Depth <- sapply(depth_group_df$Depth, function(val) {return(as.character((val)))})
+depth_group_df$Depth <- as.character(depth_group_df$Depth)
+depth_rare <- calcIndividualBasedRarefactionCategory(depth_group_df, 'Depth')
+p <- plotRarefactionCurves(depth_rare, "Individual Rarefication By Depth")
+p
+```
+### Site
+```{r}
+site_group_df <- my_df_clean %>% 
+  select(Site_name, first_species_col:ncol(my_df_clean)) %>% 
+  group_by(Site_name) %>% 
+  summarize(across(.fns = sum))
+
+# depth_group_df$Depth <- sapply(depth_group_df$Depth, function(val) {return(as.character((val)))})
+site_group_df$Site_name <- as.character(site_group_df$Site_name)
+site_rare <- calcIndividualBasedRarefactionCategory(site_group_df, 'Site_name')
+p1 <- plotRarefactionCurves(site_rare, "Individual Rarefication By Site_name")
+p1
+```
+```{r}
+site_group_df <- my_df_clean %>% 
+  filter(year < 2020) %>% 
+  select(Site_name, first_species_col:ncol(my_df_clean)) %>% 
+  group_by(Site_name) %>% 
+  summarize(across(.fns = sum))
+
+# depth_group_df$Depth <- sapply(depth_group_df$Depth, function(val) {return(as.character((val)))})
+site_group_df$Site_name <- as.character(site_group_df$Site_name)
+site_rare <- calcIndividualBasedRarefactionCategory(site_group_df, 'Site_name')
+p2 <- plotRarefactionCurves(site_rare, "Individual Rarefication By Site Before The storm")
+p2
+```
+
+```{r}
+site_group_df <- my_df_clean %>% 
+  filter(year > 2020) %>% 
+  select(Site_name, first_species_col:ncol(my_df_clean)) %>% 
+  group_by(Site_name) %>% 
+  summarize(across(.fns = sum))
+
+# depth_group_df$Depth <- sapply(depth_group_df$Depth, function(val) {return(as.character((val)))})
+site_group_df$Site_name <- as.character(site_group_df$Site_name)
+site_rare <- calcIndividualBasedRarefactionCategory(site_group_df, 'Site_name')
+p3 <- plotRarefactionCurves(site_rare, "Individual Rarefication By Site After The storm")
+p3
+```
+
+
+## Sample-Based Rarefaction Curves
+
+Now we will rarefy by sample.
+
+When we use Sample-based rarefaction we summing up the number of new species that added with each new sample and ignoring the number of individuals belonging to each species. Therefore we neutralize the effect of large schools (herds/flocks etc.) on the rarefaction curve shape
+
+
+```{r}
+sample_rare_df <- calcSampleBasedRarefactionCategory(my_df_clean, 'year')
+sample_rare_df
+p <- plotRarefactionCurves(sample_rare_df, title="Sample Rarefication")
+p
+```
+```{r}
+cryptic_sample_rare_df <- calcSampleBasedRarefactionCategory(
+  my_df_clean %>% filter(Trans_type == "C"), 'year')
+p <- plotRarefactionCurves(cryptic_sample_rare_df, title="Cryptic Sample Rarefication")
+p
+```
+```{r}
+non_cryptic_sample_rare_df <- calcSampleBasedRarefactionCategory(
+  my_df_clean %>% filter(Trans_type == "T"), 'year')
+p <- plotRarefactionCurves(non_cryptic_sample_rare_df, title="Non Cryptic Sample Rarefication")
+p
+```
+
+
+## Shanon-Winner Rarefaction Curve
+```{r}
+sample_rare_df <- calcSampleBasedRarefactionCategory(my_df_clean, 'year', q=1)
+p1 <- plotRarefactionCurves(sample_rare_df, title="Sample Rarefication Shannon-Winner")
+
+cryptic_sample_rare_df <- calcSampleBasedRarefactionCategory(
+  my_df_clean %>% filter(Trans_type == "C"), 'year', q = 1)
+p2 <- plotRarefactionCurves(cryptic_sample_rare_df, title="Cryptic Sample Rarefication Shannon-Winner")
+
+non_cryptic_sample_rare_df <- calcSampleBasedRarefactionCategory(
+  my_df_clean %>% filter(Trans_type == "T"), 'year', q = 1)
+p3 <- plotRarefactionCurves(non_cryptic_sample_rare_df, title="Non Cryptic Sample Rarefication Shannon-Winner")
+
+p1
+p2
+p3
+```
+## Covrage Rarefication:
+```{r}
+sample_rare_df <- calcCovrageRarefactinoCategory(my_df_clean, 'year')
+p1 <- plotRarefactionCurves(sample_rare_df, title="Covrage Sample Rarefication")
+
+cryptic_sample_rare_df <- calcCovrageRarefactinoCategory(
+  my_df_clean %>% filter(Trans_type == "C"), 'year')
+p2 <- plotRarefactionCurves(cryptic_sample_rare_df, title="Cryptic Covrage Sample Rarefication")
+
+non_cryptic_sample_rare_df <- calcCovrageRarefactinoCategory(
+  my_df_clean %>% filter(Trans_type == "T"), 'year')
+p3 <- plotRarefactionCurves(non_cryptic_sample_rare_df, title="Non Cryptic Covrage Sample Rarefication")
+
+p1
+p2
+p3
+```
+
