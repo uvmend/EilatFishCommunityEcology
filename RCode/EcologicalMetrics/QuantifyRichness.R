@@ -1,77 +1,67 @@
-pacman::p_load(vegan)
-pacman::p_load(tidyverse)
-pacman::p_load(plotrix)
-pacman::p_load(rareNMtests)
-pacman::p_load(mobr)
+library(tidyverse)
 
-# load data:
-orig_df <- readRDS("./Data/wide_fish_eilat.rds")
+plotRarefactionCurves <- function(df, title="") {
+  ### Function to plot a rarification dataframe with expected names
+  p <- df %>% 
+    ggplot(aes(x=Individuals, y=Richness, color = Survey))+
+    geom_line(size = 1.5) +
+    ggtitle(title) +
+    theme_minimal() +
+    theme(plot.title = element_text(size=18, hjust = 0.5))
+  return(p)
+}
 
-# make data table into data frame:
-orig_df <- orig_df %>% ungroup()
-orig_df <- as.data.frame(orig_df)
+calcIndividualBasedRarefactionCategory <- function(df, category) {
+  ind_based_rare<-list()
+  
+  for (i in unique(df[[category]])) {
+    filtered_df <- df[df[[category]] == i,]
+    sp_matrix <- filtered_df[,2:ncol(filtered_df)]
+    
+    rarefaction <- rarefaction.individual(sp_matrix, method = "sample-size", q = 0)
+    rarefaction[[category]] <- i
+    ind_based_rare[[i]]<- rarefaction
+  }
+  
+  ind_based_rare<-bind_rows(ind_based_rare)
+  
+  colnames(ind_based_rare)<-c("Individuals","Richness","Survey")
+  return(ind_based_rare)
+}
 
-first_species_col = 12
+calcSampleBasedRarefactionCategory <- function(df, category, q=0) {
+  sample_based_rare <- list()
+  
+  for (i in unique(df[[category]])) {
+    filtered_df <- df[df[[category]] == i,]
+    sp_matrix <- filtered_df[,first_species_col:ncol(filtered_df)]
+    
+    rarefaction_df <- rarefaction.sample(sp_matrix, method = "sample-size", q = 1)
+    rarefaction_df[[category]] <- as.character(i)
+    sample_based_rare[[i]] <- rarefaction_df
+  }
+  sample_based_rare<-bind_rows(sample_based_rare)
+  
+  colnames(sample_based_rare)<- c("Individuals", "Richness","Survey")#c("Samples","Richness","Survey")
+  
+  return(sample_based_rare)  
+}
 
-df <- orig_df
-#plot richness based on year:
-df %>% 
-  mutate(richness = rowSums(df[first_species_col:length(df)] > 0)) %>% 
-  ggplot() +
-  aes(x = year, y = richness) +
-  stat_summary(geom = "bar", fun.data = mean_se, fill="lightblue") +
-  stat_summary(geom = "errorbar", fun.data = mean_se, position = "dodge", width = 0.3) +
-  xlab("Year") +
-  ylab("Mean Richness") +
-  ggtitle("Yearly Mean Richness")
-
-#plot richness based on year:
-df %>% 
-  mutate(richness = rowSums(df[first_species_col:length(df)] > 0)) %>% 
-  ggplot() +
-  aes(x = month, y = richness) +
-  stat_summary(geom = "bar", fun.data = mean_se, fill="lightblue") +
-  stat_summary(geom = "errorbar", fun.data = mean_se, position = "dodge", width = 0.3) +
-  xlab("Month") +
-  ylab("Mean Richness")+
-  ggtitle("Monthly Mean Richness")
-
-
-df$year_month <- paste(year(df$Date), month(df$Date, label=TRUE), sep = "-")
-df %>% 
-  mutate(richness = rowSums(df[first_species_col:length(df)] > 0)) %>% 
-  ggplot() +
-  aes(x = year_month, y = richness, fill=year) +
-  stat_summary(geom = "bar", fun.data = mean_se, fill="lightblue") +
-  stat_summary(geom = "errorbar", fun.data = mean_se, position = "dodge", width = 0.3) +
-  xlab("Date") +
-  ylab("Mean Richness")+
-  ggtitle("Mean Richness by date")
-
-# create species matrix:
-sp_matrix <- orig_df[,first_species_col:length(orig_df)]
-raremax <- 1#sp_matrix %>% rowSums() %>% min()
-
-sp_matrix %>% 
-  mutate(abundance = rowSums(.)) %>% 
-  ggplot() +
-  aes(x = abundance) + 
-  geom_histogram() +
-  scale_x_log10() +
-  ggtitle("Species Abundance")
-
-clear_df <-  orig_df %>% 
-  mutate(abundance = rowSums(orig_df[first_species_col:length(orig_df)])) %>% 
-  filter(abundance > 10) %>% 
-  mutate(abundance = NULL)
-
-sp_matrix <- clear_df[first_species_col:length(clear_df)]
-raremax <- sp_matrix %>% rowSums() %>% min()
-
-# rareification:
-oneSampleRare <- rarefaction.individual(sp_matrix[1,], method="sample-size", q=0)
-ggplot(data = oneSampleRare, aes(x = `sample-size`, y = `Hill (q=0)`)) +
-  geom_line()+
-  xlab("Richness") + 
-  ylab("Individual") +
-  ggtitle("Rareification curve")
+calcCovrageRarefactinoCategory <- function(df, category, q=0) {
+  coverage_based_rare<-list()
+  
+  for (i in unique(df[[category]])) {
+    filtered_df <- df[df[[category]] == i,]
+    sp_matrix <- filtered_df[,first_species_col:ncol(filtered_df)]
+    
+    rarefaction <- rarefaction.sample(sp_matrix, method = "coverage", q = 0)
+    
+    rarefaction[[category]] <- i
+    rarefaction[[category]] <- as.character(i)
+    coverage_based_rare[[i]]<- rarefaction
+  }
+  coverage_based_rare<-bind_rows(coverage_based_rare)
+  
+  colnames(coverage_based_rare) <- c("Individuals", "Richness","Survey")#c("Samples","Richness","Survey")
+  return(coverage_based_rare)
+}
